@@ -8,7 +8,7 @@ import subprocess
 import urllib.parse
 import lsfiles
 import functools
-
+import time
 
 SUCCESS = 1
 FAILURE = 0
@@ -29,8 +29,9 @@ def to_obsidian_root(path: pathlib.PurePath | pathlib.Path) -> str:
     return str(path)[len(str(env.get("OBSIDIAN_VAULT"))) :]  # type: ignore
 
 
-def failure(msg: str) -> int:
-    sys.stdout.write(f"{msg}\n")
+def failure(msg: Optional[str] = None) -> int:
+    if msg:
+        sys.stdout.write(f"{msg}\n")
     return FAILURE
 
 
@@ -144,13 +145,28 @@ def parse_args(cmd: list[str]) -> int:
             return failure(f"unrecognised command: {cmd}")
 
 
-def _open():
-    return SUCCESS
-
-
 def _main():
     if not check_env():
-        return FAILURE
+        return failure()
+    res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
+    if res.returncode:
+        subprocess.run(
+            [
+                "open",
+                "obsidian://open?vault={vault_id}".format(vault_id=env.get("VAULT_ID")),
+            ]
+        )
+        c = 0
+        while 1:
+            print("polling obsidian process...")
+            res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
+            if res.returncode == 0:
+                break
+            time.sleep(0.1)
+            c += 1
+            if c >= 10:
+                return failure("could not open obsidian")
+
     return parse_args(sys.argv[1:])
 
 

@@ -1,0 +1,38 @@
+[tool.pyright]
+include = ["obsidian_cli"]
+#exclude = [
+#    "**/node_modules",
+#    "**/__pycache__",
+#]
+# ignore = ["src/oldstuff"]
+defineConstant = { DEBUG = true }
+# stubPath = "src/stubs"
+typeshedPath = "/Users/yul/Desktop/Repos/typeshed"
+venvPath = "."
+venv = ".venv"
+# pythonPath = ".venv/bin/python"
+reportMissingImports = true
+reportMissingTypeStubs = false
+# pythonVersion = "3.10"
+# pythonPlatform = "Darwin"
+executionEnvironments = [
+  # { root = "src/web", pythonVersion = "3.5", pythonPlatform = "Windows", extraPaths = [ "src/service_libs" ] },
+  { root = "obsidian_cli" },
+]
+
+[tool.mypy]
+python_executable = ".venv/bin/python"
+python_version = "3.10"
+follow_imports = "normal"
+pdb = true
+show_traceback = true
+raise_exceptions = true
+custom_typeshed_dir = "/Users/yul/Desktop/Repos/typeshed"
+
+[tool.pylsp-mypy]
+enabled = true
+live_mode = true
+strict = true
+
+[tool.mccabe]
+threshold = 10
