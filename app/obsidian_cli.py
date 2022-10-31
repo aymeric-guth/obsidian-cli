@@ -156,3 +156,7 @@ def _main():
 
 def main() -> int:
     return not _main()
+
+
+if __name__ == "__main__":
+    main()
