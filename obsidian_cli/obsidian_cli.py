@@ -109,6 +109,9 @@ def parse_args(cmd: list[str]) -> int:
     )
 
     match cmd:
+        case []:
+            return success()
+
         case ["open" | "o"]:
             resource = env.get("OBSIDIAN_VAULT") / env.get("STACK_FILE")  # type: ignore
             if not resource.exists():

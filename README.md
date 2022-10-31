@@ -30,6 +30,9 @@ default file that will be opened
 ## Usage
 
 ```shell
+# opens obsidian
+obs
+
 # opens default file if filename is not provided
 # else, tries to open filename
 obs open | o [filename]
