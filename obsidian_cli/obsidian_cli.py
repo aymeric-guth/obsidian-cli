@@ -7,14 +7,19 @@ import pdb
 import subprocess
 import urllib.parse
 import lsfiles
-import functools
 import time
+import re
+
 
 SUCCESS = 1
 FAILURE = 0
 URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
 URI_SEARCH = "obsidian://search?vault={vault_id}&query={query}"
-
+USER_HOME = os.getenv("HOME")
+if not USER_HOME:
+    raise RuntimeError("can you please fuck off")
+OBSIDIAN_DIR_DARWIN = f"{USER_HOME}/Library/Application Support/obsidian"
+OBSIDIAN_DIR_LINUX = f"{USER_HOME}/.config/obsidian"
 
 env: dict[str, pathlib.Path | str] = {}
 
@@ -113,7 +118,8 @@ def parse_args(cmd: list[str]) -> int:
             return success("open | o")
 
         case ["open" | "o", file]:
-            files = [i for i in files if lsfiles.filters.regex(file)(i)]  # type: ignore
+            pat = re.compile(file, re.IGNORECASE)
+            files = [i for i in files if pat.search(i.name)]
             if not files:
                 return failure(f"no match for: {file=}")
             elif len(files) == 1:
@@ -146,8 +152,18 @@ def parse_args(cmd: list[str]) -> int:
 
 
 def _main():
+    global env
+
+    if sys.platform == "darwin":
+        os.environ["OBSIDIAN_DIR"] = OBSIDIAN_DIR_DARWIN
+    elif sys.platform == "linux":
+        os.environ["OBSIDIAN_DIR"] = OBSIDIAN_DIR_LINUX
+    else:
+        return failure("i've got bad news for you bud")
+
     if not check_env():
         return failure()
+
     res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
     if res.returncode:
         subprocess.run(
@@ -161,11 +177,12 @@ def _main():
             print("polling obsidian process...")
             res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
             if res.returncode == 0:
+                success(f"opened obsidian after {c} tries")
                 break
             time.sleep(0.1)
             c += 1
             if c >= 10:
-                return failure("could not open obsidian")
+                return failure(f"could not open obsidian, tried {c} times")
 
     return parse_args(sys.argv[1:])
 

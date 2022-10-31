@@ -9,26 +9,21 @@ CLI helper for Obsidian
 ```shell
 python3 -m virtualenv .venv
 source .venv/bin/activate
-python -m pip install -r requirements.txt
-python -m app
+python -m pip install git+https://git.ars-virtualis.org/yul/obsidian-cli@master
 
 # hopefully a setup.py soon
 ```
 
 ### Environment Setup
 
-2 environment variables are required
+1 environment variable is required
 
 OBSIDIAN_VAULT
 location of your obsidian vault on disk
 
-OBSIDIAN_DIR
-location to local obsidian config dir
-(hopefully a runtime lookup, soon)
-
-1 optional
+1 is optional
 STACK_FILE
-for lack of a better name
+(for lack of a better name)
 default file that will be opened
 
 
