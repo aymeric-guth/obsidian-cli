@@ -1,0 +1,42 @@
+#!/usr/bin/python3
+# -*- coding: utf-8 -*-
+import os
+import re
+import sys
+import pathlib
+import json
+
+
+def main() -> int:
+    if len(sys.argv) != 1:
+        sys.stdout.write("invoke without arguments\n")
+        return 1
+
+    obsidian_vault = s if (s := os.getenv("OBSIDIAN_VAULT")) else ""
+    if not pathlib.Path(obsidian_vault).exists():
+        sys.stdout.write("obsidian_vault not found\n")
+        return 1
+
+    p = pathlib.Path(s if (s := os.getenv("OBSIDIAN_DIR")) else "") / "obsidian.json"
+    if not p.exists():
+        sys.stdout.write("obsidian_dir not found\n")
+        return 1
+
+    obsidian_cfg = json.loads(p.read_text())
+    vaults = obsidian_cfg.get("vaults")
+    if vaults is None:
+        sys.stdout.write("no vaults are registred\n")
+        return 1
+
+    for k, v in vaults.items():
+        if v.get("path", "") == obsidian_vault:
+            sys.stdout.write(k)
+            return 0
+
+    sys.stdout.write("vault is not active")
+    return 1
+
+
+if __name__ == "__main__":
+    sys.argv[0] = re.sub(r"(-script\.pyw|\.exe)?$", "", sys.argv[0])
+    sys.exit(main())
