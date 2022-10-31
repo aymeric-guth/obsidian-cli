@@ -122,15 +122,12 @@ def parse_args(cmd: list[str]) -> int:
             files = [i for i in files if pat.search(i.name)]
             if not files:
                 return failure(f"no match for: {file=}")
-            elif len(files) == 1:
-                uri = URI_OPEN.format(
-                    vault_id=env.get("VAULT_ID"),
-                    filename=obsidian_encode(to_obsidian_root(files[0])),
-                )
-                subprocess.run(["open", uri])
-                return success(f"match for {file=} : {files=}")
-            else:
-                return failure(f"multiple matches for {file=} : {files=}")
+            uri = URI_OPEN.format(
+                vault_id=env.get("VAULT_ID"),
+                filename=obsidian_encode(to_obsidian_root(files[0])),
+            )
+            subprocess.run(["open", uri])
+            return success(f"match for {file=} : {files=}")
 
         case ["find" | "f", query]:
             if "#" in query:
