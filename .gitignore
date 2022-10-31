@@ -291,5 +291,5 @@ DataGripProjects/
 .stversions
 .stignore
 .envrc
-.tmuxp.yml
+.tmuxp.yaml
 .func.sh

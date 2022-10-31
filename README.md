@@ -43,3 +43,7 @@ obs open | o [filename]
 # filename has to exist
 obs find | f #query | filename
 ```
+
+## References
+
+https://help.obsidian.md/Advanced+topics/Using+obsidian+URI
