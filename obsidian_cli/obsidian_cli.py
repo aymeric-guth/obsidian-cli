@@ -9,8 +9,13 @@ import urllib.parse
 import lsfiles
 import time
 import re
-from utils import cli
+from collections import defaultdict
+
 import utils
+from utils import cli
+from rich.console import Console
+from rich.table import Table
+
 from .core import tag_parser
 
 
@@ -73,6 +78,18 @@ def check_env() -> tuple[str, int]:
     return cli.failure("vault is not active")
 
 
+def obsidian_files() -> list[pathlib.PurePath]:
+    return lsfiles.iterativeDFS(
+        filters=lsfiles.filters.ext(
+            {
+                ".md",
+            }
+        ),
+        adapter=pathlib.PurePath,
+        root=pathlib.Path(cli.env.get("OBSIDIAN_VAULT")),
+    )
+
+
 def tag_finder(msg: str) -> tuple[str, int]:
     def catcher(fnc):
         def inner(*args, **kwargs):
@@ -83,26 +100,34 @@ def tag_finder(msg: str) -> tuple[str, int]:
 
         return inner
 
-    return cli.success(
-        "\n".join(
-            [
-                t
-                for f in (
-                    lsfiles.iterativeDFS(
-                        filters=lsfiles.filters.ext(
-                            {
-                                ".md",
-                            }
-                        ),
-                        adapter=pathlib.PurePath,
-                        root=pathlib.Path(cli.env.get("OBSIDIAN_VAULT")),
-                    )
-                )
-                if (t := catcher(tag_parser)(lambda f: lambda: open(f).read())(f))
-                is not None
-            ]
-        )
+    # pdb.set_trace()
+    res = (
+        t
+        for f in obsidian_files()
+        if (t := (catcher(tag_parser)((lambda f: lambda: open(f).read())(f))))
+        is not None
     )
+
+    d = defaultdict(int)
+    table = Table(title="tags and occurrences")
+    table.add_column("#", justify="left", style="cyan", no_wrap=True)
+    table.add_column("tags", justify="left", style="magenta")
+
+    for y in res:
+        for x in y:
+            d[x] += 1
+
+    if sys.stdout.isatty():
+        [
+            table.add_row(str(v), k)
+            for k, v in sorted(
+                [(k, v) for k, v in d.items()], key=lambda item: item[1], reverse=True
+            )
+        ]
+        console = Console()
+        console.print(table)
+        return cli.success()
+    return cli.success("\n".join([k for k, v in d.items()]))
 
 
 def parse_args(cmd: list[str]) -> tuple[str, int]:
