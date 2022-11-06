@@ -1,10 +1,7 @@
 [tool.pyright]
 include = ["obsidian_cli"]
-#exclude = [
-#    "**/node_modules",
-#    "**/__pycache__",
-#]
-# ignore = ["src/oldstuff"]
+exclude = ["**/node_modules", "**/__pycache__"]
+ignore = ["src/oldstuff"]
 defineConstant = { DEBUG = true }
 # stubPath = "src/stubs"
 typeshedPath = "/Users/yul/Desktop/Repos/typeshed"

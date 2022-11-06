@@ -10,9 +10,9 @@ import lsfiles
 import time
 import re
 from utils import cli
+import utils
 
-SUCCESS = 1
-FAILURE = 0
+
 URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
 URI_SEARCH = "obsidian://search?vault={vault_id}&query={query}"
 USER_HOME = os.getenv("HOME")
@@ -21,7 +21,8 @@ if not USER_HOME:
 OBSIDIAN_DIR_DARWIN = f"{USER_HOME}/Library/Application Support/obsidian"
 OBSIDIAN_DIR_LINUX = f"{USER_HOME}/.config/obsidian"
 
-env: dict[str, pathlib.Path | str] = {}
+
+env = cli.Environment()
 
 
 def obsidian_encode(param: str, meta: str = "") -> str:
@@ -34,64 +35,49 @@ def to_obsidian_root(path: pathlib.PurePath | pathlib.Path) -> str:
     return str(path)[len(str(env.get("OBSIDIAN_VAULT"))) :]  # type: ignore
 
 
-def failure(msg: Optional[str] = None) -> int:
-    if msg:
-        sys.stdout.write(f"{msg}\n")
-    return FAILURE
+def check_env() -> tuple[str, int]:
+    (msg, defined) = env.query("OBSIDIAN_DIR")
+    if sys.platform == "darwin" and not defined:
+        env.set("OBSIDIAN_DIR", OBSIDIAN_DIR_DARWIN)
+    elif sys.platform == "linux" and not defined:
+        env.set("OBSIDIAN_DIR", OBSIDIAN_DIR_LINUX)
+    else:
+        return cli.failure("i've got bad news for you bud")
 
-
-def success(msg: Optional[str] = None) -> int:
-    if msg:
-        sys.stdout.write(f"{msg}\n")
-    return SUCCESS
-
-
-def check_env_var(var: str) -> bool:
-    global env
-
-    env_var = s if (s := os.getenv(var)) else ""
-    if not env_var:
-        return False
-    path = pathlib.Path(env_var)
-    if not path.exists():
-        return False
-    env.update({var: path})
-    return True
-
-
-def check_env() -> int:
     # pdb.set_trace()
-    global env
 
-    if not check_env_var("OBSIDIAN_VAULT"):
-        return failure("obsidian_vault not found")
+    # var defined ?
+    # no -> return error
+    # yes -> next step
+    (msg, defined) = env.query("OBSIDIAN_VAULT")
+    if not defined:
+        return cli.failure(msg)
 
-    if not check_env_var("OBSIDIAN_DIR"):
-        return failure("obsidian_vault not found")
-
-    obsidian_dir: pathlib.Path = env.get("OBSIDIAN_DIR")  # type: ignore
+    obsidian_dir = pathlib.Path(env.get("OBSIDIAN_DIR"))
     obsidian_cfg = obsidian_dir / "obsidian.json"
     if not obsidian_cfg.exists():
-        return failure("obsidian_cfg not found")
+        return cli.failure(f"{obsidian_cfg=} not found")
 
-    obsidian_cfg = json.loads(obsidian_cfg.read_text())
-    vaults = obsidian_cfg.get("vaults")
+    obsidian_cfg = utils.default_exc(json.loads, {})(obsidian_cfg.read_text())
+    if not obsidian_cfg:
+        return cli.failure(f"{obsidian_cfg=} is invalid")
+    vaults = obsidian_cfg.get("vaults", None)
     if vaults is None:
-        return failure("no vaults are registred")
+        return cli.failure("no vaults are registred")
+
+    (msg, defined) = env.query("STACK_FILE")
+    if not defined:
+        env.set("STACK_FILE", "300 Resources/Stack.md")
 
     for k, v in vaults.items():
-        if v.get("path", "") == str(env.get("OBSIDIAN_VAULT")):
-            env.update({"VAULT_ID": k})
-            if not check_env_var("STACK_FILE"):
-                env.update({"STACK_FILE": "3) Resources/Stack.md"})
-            return success()
+        if v.get("path", "") == env.get("OBSIDIAN_VAULT"):
+            env.set("VAULT_ID", k)
+            return cli.success()
 
-    return failure("vault is not active")
+    return cli.failure("vault is not active")
 
 
-def parse_args(cmd: list[str]) -> int:
-    global env
-
+def parse_args(cmd: list[str]) -> tuple[str, int]:
     files: list[pathlib.PurePath] = lsfiles.iterativeDFS(
         lambda x: (
             lsfiles.Maybe.unit(x)
@@ -104,33 +90,37 @@ def parse_args(cmd: list[str]) -> int:
                 )
             )
         ),
-        lsfiles.adapters.pathlib_purepath,
-        env.get("OBSIDIAN_VAULT"),  # type: ignore
+        pathlib.PurePath,
+        pathlib.Path(env.get("OBSIDIAN_VAULT")),
     )
 
+    pdb.set_trace()
     match cmd:
         case []:
-            return success()
+            return cli.success()
 
         case ["open" | "o"]:
-            resource = env.get("OBSIDIAN_VAULT") / env.get("STACK_FILE")  # type: ignore
+            resource = pathlib.Path(env.get("OBSIDIAN_VAULT")) / env.get("STACK_FILE")
             if not resource.exists():
-                return failure("resource could not be found on disk")
-            uri = URI_OPEN.format(vault_id=env.get("VAULT_ID"), filename=obsidian_encode(env.get("STACK_FILE")))  # type: ignore
+                return cli.failure(f"{resource=} could not be found on disk")
+            uri = URI_OPEN.format(
+                vault_id=env.get("VAULT_ID"),
+                filename=obsidian_encode(env.get("STACK_FILE")),
+            )
             subprocess.run(["open", uri])
-            return success("open | o")
+            return cli.success("open | o")
 
         case ["open" | "o", file]:
             pat = re.compile(file, re.IGNORECASE)
-            files = [i for i in files if pat.search(i.name)]
-            if not files:
-                return failure(f"no match for: {file=}")
+            f = [i for i in files if pat.search(i.name)]
+            if not f:
+                return cli.failure(f"no match for: {file=}")
             uri = URI_OPEN.format(
                 vault_id=env.get("VAULT_ID"),
                 filename=obsidian_encode(to_obsidian_root(files[0])),
             )
             subprocess.run(["open", uri])
-            return success(f"match for {file=} : {files=}")
+            return cli.success(f"match for {file=} : {files=}")
 
         case ["find" | "f", query]:
             if "#" in query:
@@ -139,30 +129,25 @@ def parse_args(cmd: list[str]) -> int:
                     query=obsidian_encode(meta="tag:", param=query),
                 )
                 subprocess.run(["open", uri])
-                return success()
+                return cli.success()
 
             else:
                 return parse_args(["o", *cmd[1:]])
 
         case ["find" | "f"]:
-            return failure("usage: find | f tag[/sub-tag] | filename")
+            return cli.failure("usage: find | f tag[/sub-tag] | filename")
 
         case _:
-            return failure(f"unrecognised command: {cmd}")
+            return cli.failure(f"unrecognised command: {cmd}")
 
 
-def _main():
-    global env
-
-    if sys.platform == "darwin":
-        os.environ["OBSIDIAN_DIR"] = OBSIDIAN_DIR_DARWIN
-    elif sys.platform == "linux":
-        os.environ["OBSIDIAN_DIR"] = OBSIDIAN_DIR_LINUX
-    else:
-        return failure("i've got bad news for you bud")
-
-    if not check_env():
-        return failure()
+def main(*args) -> tuple[str, int]:
+    """
+    main function
+    """
+    (msg, ok) = check_env()
+    if not ok:
+        return cli.failure(msg)
 
     res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
     if res.returncode:
@@ -177,61 +162,44 @@ def _main():
             print("polling obsidian process...")
             res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
             if res.returncode == 0:
-                success(f"opened obsidian after {c} tries")
+                cli.success(f"opened obsidian after {c} tries")
                 break
-            time.sleep(0.1)
+            time.sleep(0.2)
             c += 1
             if c >= 10:
-                return failure(f"could not open obsidian, tried {c} times")
+                return cli.failure(f"could not open obsidian, tried {c} times")
 
-    return parse_args(sys.argv[1:])
+    return parse_args(*args)
 
 
-def parser(filename: str) -> dict[Any, Any]:
-    import re
-    import yaml
-
-    def try_not(
-        fnc: Callable[[Any], dict[Any, Any]], default: dict[Any, Any]
-    ) -> Callable:
-        def inner(*args, **kwargs) -> dict[Any, Any]:
-            try:
-                return fnc(*args, **kwargs)
-            except Exception:
-                return default
-
-        return inner
-
-    return (
-        try_not(yaml.load, {})(m.group(1), yaml.CLoader)
-        if (
-            m := re.compile(r"^[-]{3}([a-zA-Z0-9-_#:\s\n/]{1,})[-]{3}").search(
-                (lambda f: open(f).read())(filename)
-            )
-        )
-        else {}
-    )
+def _main() -> int:
+    return cli.sh_fnc(main)(sys.argv[1:])
 
 
 def mdman(msg: str) -> tuple[str, int]:
+    (msg, ok) = check_env()
+    if not ok:
+        return cli.failure(msg)
+
     def catcher(fnc):
         def inner(*args, **kwargs):
             try:
                 return fnc(*args, **kwargs).get("tags")
             except Exception as err:
-                print(err, *args, **kwargs)
-                return
+                raise RuntimeError(err, *args, **kwargs)
 
         return inner
+
+    from .core import tag_parser
 
     res = [
         (f, t)
         for f, t in (
-            (f, catcher(parser)(f))
+            (f, catcher(tag_parser)((lambda f: lambda: open(f).read())(f)))
             for f in lsfiles.iterativeDFS(
                 lsfiles.filters.ext({".md"}),
                 lambda f: f,
-                os.getenv("OBSIDIAN_VAULT"),
+                pathlib.Path(env.get("OBSIDIAN_VAULT")),
             )
         )
         if t is not None
@@ -241,6 +209,5 @@ def mdman(msg: str) -> tuple[str, int]:
     return cli.success()
 
 
-def main() -> int:
-    sys.argv.append("")
-    return cli.entrypoint_one_arg(mdman)
+def _mdman() -> int:
+    return cli.sh_fnc(mdman)("")
