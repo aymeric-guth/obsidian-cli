@@ -1,4 +1,6 @@
-git+https://git.ars-virtualis.org/yul/lsfiles@master
-git+https://git.ars-virtualis.org/yul/obsidian-cli@master
 setuptools
 build
+git+https://git.ars-virtualis.org/yul/lsfiles@master
+git+https://git.ars-virtualis.org/yul/utils@master
+ipython
+pyyaml

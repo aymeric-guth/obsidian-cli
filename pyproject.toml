@@ -16,13 +16,13 @@ reportMissingTypeStubs = false
 # pythonVersion = "3.10"
 # pythonPlatform = "Darwin"
 executionEnvironments = [
-  # { root = "src/web", pythonVersion = "3.5", pythonPlatform = "Windows", extraPaths = [ "src/service_libs" ] },
-  { root = "obsidian_cli" },
+    # { root = "src/web", pythonVersion = "3.5", pythonPlatform = "Windows", extraPaths = [ "src/service_libs" ] },
+    { root = "obsidian_cli" },
 ]
 
 [tool.mypy]
 python_executable = ".venv/bin/python"
-python_version = "3.10"
+python_version = "3.11"
 follow_imports = "normal"
 pdb = true
 show_traceback = true

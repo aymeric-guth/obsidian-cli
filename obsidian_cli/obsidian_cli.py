@@ -1,5 +1,5 @@
 import sys
-from typing import Optional
+from typing import Optional, Any, Callable
 import pathlib
 import os
 import json
@@ -9,7 +9,7 @@ import urllib.parse
 import lsfiles
 import time
 import re
-
+from utils import cli
 
 SUCCESS = 1
 FAILURE = 0
@@ -187,9 +187,60 @@ def _main():
     return parse_args(sys.argv[1:])
 
 
+def parser(filename: str) -> dict[Any, Any]:
+    import re
+    import yaml
+
+    def try_not(
+        fnc: Callable[[Any], dict[Any, Any]], default: dict[Any, Any]
+    ) -> Callable:
+        def inner(*args, **kwargs) -> dict[Any, Any]:
+            try:
+                return fnc(*args, **kwargs)
+            except Exception:
+                return default
+
+        return inner
+
+    return (
+        try_not(yaml.load, {})(m.group(1), yaml.CLoader)
+        if (
+            m := re.compile(r"^[-]{3}([a-zA-Z0-9-_#:\s\n/]{1,})[-]{3}").search(
+                (lambda f: open(f).read())(filename)
+            )
+        )
+        else {}
+    )
+
+
+def mdman(msg: str) -> tuple[str, int]:
+    def catcher(fnc):
+        def inner(*args, **kwargs):
+            try:
+                return fnc(*args, **kwargs).get("tags")
+            except Exception as err:
+                print(err, *args, **kwargs)
+                return
+
+        return inner
+
+    res = [
+        (f, t)
+        for f, t in (
+            (f, catcher(parser)(f))
+            for f in lsfiles.iterativeDFS(
+                lsfiles.filters.ext({".md"}),
+                lambda f: f,
+                os.getenv("OBSIDIAN_VAULT"),
+            )
+        )
+        if t is not None
+    ]
+    print(len(res))
+
+    return cli.success()
+
+
 def main() -> int:
-    return not _main()
-
-
-if __name__ == "__main__":
-    main()
+    sys.argv.append("")
+    return cli.entrypoint_one_arg(mdman)
