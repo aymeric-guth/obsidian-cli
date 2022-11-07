@@ -48,3 +48,6 @@ https://help.obsidian.md/Advanced+topics/Using+obsidian+URI
 https://forum.obsidian.md/t/use-obsidian-uri-to-open-a-static-link-with-id/17360
 https://forum.obsidian.md/t/command-line-interface-to-open-files-folders-in-obsidian-from-the-terminal/860/40
 https://forum.obsidian.md/t/anyone-using-imdone-io-that-can-elaborate-on-its-use/13340
+
+https://publish.obsidian.md/hub/04+-+Guides%2C+Workflows%2C+%26+Courses/Guides/Markdown+Syntax
+https://help.obsidian.md/How+to/Format+your+notes
