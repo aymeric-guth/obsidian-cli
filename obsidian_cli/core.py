@@ -22,7 +22,7 @@ class Vault:
             # basic sanity check, might not be necessary
             raise Exception()
         self._registry: dict[str, list[str]] = collections.defaultdict(list)
-        files = lsfiles.iterativeDFS(
+        self.files = lsfiles.iterativeDFS(
             filters=lsfiles.filters.ext(
                 {
                     ".md",
@@ -32,11 +32,10 @@ class Vault:
             root=self.root,
         )
 
-        for f in files:
-            self._registry[f.name].append(str(f.parent)[self.vault_prefix :])
-
-        raise NotImplementedError()
-        self._links: dict[str, list[str]] = collections.defaultdict(list)
+        for f in self.files:
+            self._registry[f.name[: -len(f.suffix)]].append(
+                str(f.parent)[self.vault_prefix :]
+            )
 
 
 def tag_parser(loader: Callable[[], str]) -> dict[Any, Any]:
