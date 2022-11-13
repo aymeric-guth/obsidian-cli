@@ -1,4 +1,5 @@
 import os
+import os.path
 import sqlite3
 import re
 import collections
@@ -61,11 +62,44 @@ def read_notes(cur) -> list[tuple[int, str, str, str]]:
     ).fetchall()
 
 
-def create_links(cur, data: list[tuple[int, int]]) -> None:
-    ...
+def read_file(cur, name: str, ext: str, path: str) -> list[tuple[int, str, str, str]]:
+    return cur.execute(
+        """
+    SELECT * FROM file WHERE name = ? AND extension = ? AND path = ?;
+    """,
+        [name, ext, path],
+    ).fetchall()
 
 
-wikilink = re.compile(r"(?:[\[]{2}(.*)[\]]{2})")
+def read_file_name(cur, name: str, ext: str) -> list[tuple[int, str, str, str]]:
+    return cur.execute(
+        """
+    SELECT * FROM file WHERE name = ? AND extension = ?;
+    """,
+        [name, ext],
+    ).fetchall()
+
+
+def create_link(cur, parent_id: int, child_id: int):
+    return cur.execute(
+        """
+        INSERT INTO link (parent_id, child_id)
+        VALUES (?, ?);
+        """,
+        (parent_id, child_id),
+    )
+
+
+def read_links(cur):
+    return cur.execute(
+        """
+        SELECT * FROM link;
+        """
+    ).fetchall()
+
+
+wikilink = re.compile(r"(?:[\[]{2}([^\[]+)[\]]{2})")
+# wikilink = re.compile(r"(?:[\[]{2}((?!\[).*)[\]]{2})")
 mdlink = re.compile(r"(?:\[(.*)\])\((.*)\)")
 modifiers = re.compile(r"[\#\|\^]{1,}")
 pathlink = re.compile(r"/{1,}")
@@ -87,26 +121,60 @@ files = lsfiles.iterativeDFS(
 create_notes(
     cur,
     [
-        (f.name[: -(len(f.suffix))], f.suffix, str(f.parent)[vault_prefix:])
+        (
+            f.name[: -(len(f.suffix))],
+            f.suffix,
+            p if (p := str(f.parent)[vault_prefix:]) else ".",
+        )
         for f in files
     ],
 )
 
+count = 0
+for _id, name, ext, path in read_notes(cur):
+    md = root / path / f"{name}{ext}"
+    raw = (lambda f: open(f).read())(md)
+    matches = wikilink.findall(raw)
+    links = [modifiers.split(m)[0] for m in matches]
 
-for i in read_notes(cur):
+    for l in links:
+        components = pathlib.Path(l)
+        lname = components.name
+        lpath = str(components.parent)
+
+        rs = read_file(cur, lname, ".md", lpath)
+        if len(rs) == 1:
+            create_link(cur, parent_id=_id, child_id=rs[0][0])
+            continue
+        rs = read_file_name(cur, lname, ".md")
+        if len(rs) == 1:
+            create_link(cur, parent_id=_id, child_id=rs[0][0])
+        elif len(rs) > 1:
+            raise RuntimeError(
+                f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
+            )
+        else:
+            f, e = os.path.splitext(lname)
+            rs = read_file(cur, f, e, lpath)
+            if len(rs) == 1:
+                create_link(cur, parent_id=_id, child_id=rs[0][0])
+            rs = read_file_name(cur, f, e)
+            if len(rs) == 1:
+                create_link(cur, parent_id=_id, child_id=rs[0][0])
+            elif len(rs) > 1:
+                raise RuntimeError(
+                    f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
+                )
+            else:
+                print(f"{lname=} {lpath=}")
+                count += 1
+                # log point for dead link
+                ...
+
+# for i in read_notes(cur):
+#     print(i)
+for i in read_links(cur):
     print(i)
-# links: dict[str, list[str]] = collections.defaultdict(list)
-# for _id, name, path in read_notes(cur):
-#    md = root / path / f"{name}.md"
-#    raw = (lambda f: open(f).read())(md)
-#    matches = wikilink.findall(raw)
-#    links = [modifiers.split(m)[0] for m in matches]
-#    for l in links:
-#        if "." in l:
-#            # peu etre un fichier md contenant un point, peut etre un fichier non-md
-#            # test d'appartenance aux notes dans la db
-#            ...
-#        if pathlink.search(l):
-#            # resolution immediate en cherchant path et name dans read_notes
-#            # possibilité que ce soit un fichier non-md référencé par un path complet
-#            ...
+
+# for i in result[State.NON_MD_FILE_NOT_FOUND]:
+#     print(i)
