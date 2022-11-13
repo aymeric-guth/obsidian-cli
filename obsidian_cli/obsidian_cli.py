@@ -127,7 +127,7 @@ def tag_finder(msg: str) -> tuple[str, int]:
         console = Console()
         console.print(table)
         return cli.success()
-    return cli.success("\n".join([k for k, v in d.items()]))
+    return cli.success("\n".join([k for k, _ in d.items()]))
 
 
 def parse_args(cmd: list[str]) -> tuple[str, int]:
@@ -232,11 +232,11 @@ def main(*args) -> tuple[str, int]:
 
 
 def _main() -> int:
-    return cli.sh_fnc(main)(sys.argv[1:])
+    return cli.py_fnc(main)(sys.argv[1:])
 
 
 def _tag_finder() -> int:
     (msg, ok) = check_env()
     if not ok:
-        return cli.sh_fnc(cli.failure)(msg)
-    return cli.sh_fnc(tag_finder)("")
+        return cli.py_fnc(cli.failure)(msg)
+    return cli.py_fnc(tag_finder)("")
