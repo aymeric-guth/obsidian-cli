@@ -8,7 +8,8 @@ import pathlib
 import lsfiles
 
 
-con = sqlite3.connect(":memory:")
+# con = sqlite3.connect(":memory:")
+con = sqlite3.connect("db.db")
 cur = con.cursor()
 
 cur.execute(
@@ -150,9 +151,10 @@ for _id, name, ext, path in read_notes(cur):
         if len(rs) == 1:
             create_link(cur, parent_id=_id, child_id=rs[0][0])
         elif len(rs) > 1:
-            raise RuntimeError(
-                f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
-            )
+            ...
+        #            raise RuntimeError(
+        #                f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
+        #            )
         else:
             f, e = os.path.splitext(lname)
             rs = read_file(cur, f, e, lpath)
@@ -162,9 +164,10 @@ for _id, name, ext, path in read_notes(cur):
             if len(rs) == 1:
                 create_link(cur, parent_id=_id, child_id=rs[0][0])
             elif len(rs) > 1:
-                raise RuntimeError(
-                    f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
-                )
+                ...
+            #                raise RuntimeError(
+            #                    f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
+            #                )
             else:
                 print(f"{lname=} {lpath=}")
                 count += 1
@@ -175,6 +178,9 @@ for _id, name, ext, path in read_notes(cur):
 #     print(i)
 for i in read_links(cur):
     print(i)
+con.commit()
+cur.close()
+con.close()
 
 # for i in result[State.NON_MD_FILE_NOT_FOUND]:
 #     print(i)

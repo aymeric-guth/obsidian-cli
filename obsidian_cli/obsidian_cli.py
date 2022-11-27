@@ -79,12 +79,20 @@ def check_env() -> tuple[str, int]:
 
 
 def obsidian_files() -> list[pathlib.PurePath]:
+    filters = lambda x: (
+        lsfiles.Maybe.unit(x)
+        .bind(lsfiles.filters.exclude_path("400 Archives"))
+        .bind(
+            lsfiles.filters.ext(
+                {
+                    ".md",
+                }
+            )
+        )
+    )
+
     return lsfiles.iterativeDFS(
-        filters=lsfiles.filters.ext(
-            {
-                ".md",
-            }
-        ),
+        filters=filters,
         adapter=pathlib.PurePath,
         root=pathlib.Path(cli.env.get("OBSIDIAN_VAULT")),
     )
@@ -109,15 +117,15 @@ def tag_finder(msg: str) -> tuple[str, int]:
     )
 
     d = defaultdict(int)
-    table = Table(title="tags and occurrences")
-    table.add_column("#", justify="left", style="cyan", no_wrap=True)
-    table.add_column("tags", justify="left", style="magenta")
 
     for y in res:
         for x in y:
             d[x] += 1
 
     if sys.stdout.isatty():
+        table = Table(title="tags and occurrences")
+        table.add_column("#", justify="left", style="cyan", no_wrap=True)
+        table.add_column("tags", justify="left", style="magenta")
         [
             table.add_row(str(v), k)
             for k, v in sorted(
@@ -127,7 +135,9 @@ def tag_finder(msg: str) -> tuple[str, int]:
         console = Console()
         console.print(table)
         return cli.success()
-    return cli.success("\n".join([k for k, _ in d.items()]))
+    return cli.success(
+        "\n".join([k for k, _ in d.items() if k is not None])
+    )  # empty tag
 
 
 def parse_args(cmd: list[str]) -> tuple[str, int]:

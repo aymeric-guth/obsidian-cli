@@ -102,7 +102,6 @@ typings/
 # dotenv environment variables file
 .env
 
-
 ### Windows ###
 # Windows thumbnail cache files
 Thumbs.db
@@ -293,3 +292,5 @@ DataGripProjects/
 .envrc
 .tmuxp.yaml
 .func.sh
+a.out
+db.db
