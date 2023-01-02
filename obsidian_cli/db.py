@@ -9,8 +9,7 @@ import lsfiles
 
 
 # con = sqlite3.connect(":memory:")
-con = sqlite3.connect("db.db")
-cur = con.cursor()
+con = sqlite3.connect("db.sqlite")
 
 cur.execute(
     """
@@ -104,6 +103,8 @@ wikilink = re.compile(r"(?:[\[]{2}([^\[]+)[\]]{2})")
 mdlink = re.compile(r"(?:\[(.*)\])\((.*)\)")
 modifiers = re.compile(r"[\#\|\^]{1,}")
 pathlink = re.compile(r"/{1,}")
+ignore_path = re.compile(r"(?:^.*imdone-tasks.*$)|(?:^\.)")
+ignore_link = re.compile(r"(?:^400\sArchives.*$)|(?:^.*@Novall.*$)")
 
 root = pathlib.Path(os.getenv("OBSIDIAN_VAULT"))
 vault_prefix = len(str(root)) + 1
@@ -119,6 +120,7 @@ files = lsfiles.iterativeDFS(
     root=root,
 )
 
+# add all files to db
 create_notes(
     cur,
     [
@@ -128,59 +130,95 @@ create_notes(
             p if (p := str(f.parent)[vault_prefix:]) else ".",
         )
         for f in files
+        if not ignore_path.match(str(f.parent))
     ],
 )
 
 count = 0
+# process all files
 for _id, name, ext, path in read_notes(cur):
+    # ignore files located at 400 Archives
+    if ignore_link.match(path):
+        continue
+    # ignore non markdown files
+    elif ext != ".md":
+        continue
+    # file loader
     md = root / path / f"{name}{ext}"
     raw = (lambda f: open(f).read())(md)
+    # link parser
     matches = wikilink.findall(raw)
     links = [modifiers.split(m)[0] for m in matches]
 
-    for l in links:
-        components = pathlib.Path(l)
+    # link -> file resolver
+    for link in links:
+        components = pathlib.Path(link)
         lname = components.name
         lpath = str(components.parent)
 
-        rs = read_file(cur, lname, ".md", lpath)
-        if len(rs) == 1:
-            create_link(cur, parent_id=_id, child_id=rs[0][0])
-            continue
         rs = read_file_name(cur, lname, ".md")
         if len(rs) == 1:
+            # unique file found with minimum info
             create_link(cur, parent_id=_id, child_id=rs[0][0])
-        elif len(rs) > 1:
-            ...
-        #            raise RuntimeError(
-        #                f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
-        #            )
-        else:
+            continue
+
+        rs = read_file(cur, lname, ".md", lpath)
+        if len(rs) == 1:
+            # unique file found with name and relative path
+            create_link(cur, parent_id=_id, child_id=rs[0][0])
+
+        elif len(rs) == 0:
+            # file not found
+            # at this point all md are expected to be found
             f, e = os.path.splitext(lname)
-            rs = read_file(cur, f, e, lpath)
-            if len(rs) == 1:
-                create_link(cur, parent_id=_id, child_id=rs[0][0])
+            assert e != ".md", print(lname, lpath)
+
             rs = read_file_name(cur, f, e)
             if len(rs) == 1:
+                # non md file found with minimum info
                 create_link(cur, parent_id=_id, child_id=rs[0][0])
-            elif len(rs) > 1:
-                ...
-            #                raise RuntimeError(
-            #                    f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
-            #                )
-            else:
-                print(f"{lname=} {lpath=}")
-                count += 1
-                # log point for dead link
-                ...
+                continue
 
-# for i in read_notes(cur):
-#     print(i)
-for i in read_links(cur):
-    print(i)
+            rs = read_file(cur, f, e, lpath)
+            if len(rs) == 1:
+                # non md file found with name and relative path
+                create_link(cur, parent_id=_id, child_id=rs[0][0])
+
+            elif len(rs) == 0:
+                # dead link
+                count += 1
+
+            elif len(rs) > 1:
+                # multiple files found with name and relative path
+                raise RuntimeError(
+                    f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
+                )
+        else:
+            # multiple files found with name and relative path
+            raise RuntimeError(
+                f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
+            )
+
+print(f"Dead links: {count}")
+print(len(read_links(cur)))
+
+rows = cur.execute(
+    """
+SELECT p.path, p.name, p.extension, c.path, c.name, c.extension
+FROM link
+JOIN file AS p
+ON link.parent_id = p.id
+JOIN file AS c
+ON link.child_id = c.id
+ORDER BY p.path, p.name, p.extension;
+"""
+).fetchall()
+for i in rows:
+    pp, pn, pe, cp, cn, ce = i
+    print(f"{pp}/{pn}{pe} -> {cp}/{cn}{ce}")
+
 con.commit()
 cur.close()
 con.close()
 
-# for i in result[State.NON_MD_FILE_NOT_FOUND]:
-#     print(i)
+# feature orphaned file (does not appear in a link)
