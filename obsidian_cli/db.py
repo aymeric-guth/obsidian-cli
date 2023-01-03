@@ -2,16 +2,27 @@ import os
 import os.path
 import sqlite3
 import re
-import collections
 import pathlib
 
 import lsfiles
 
 
-# con = sqlite3.connect(":memory:")
-con = sqlite3.connect("db.sqlite")
+conn = sqlite3.connect(":memory:")
+# con = sqlite3.connect("db.sqlite")
 
-cur.execute(
+conn.execute(
+    """
+DROP TABLE IF EXISTS link;
+"""
+)
+
+conn.execute(
+    """
+DROP TABLE IF EXISTS file;
+"""
+)
+
+conn.execute(
     """
 CREATE TABLE file (
     id INTEGER  NOT NULL PRIMARY KEY AUTOINCREMENT,
@@ -22,7 +33,7 @@ CREATE TABLE file (
 """
 )
 
-cur.execute(
+conn.execute(
     """
 CREATE TABLE link (
     parent_id INTEGER  NOT NULL,
@@ -34,8 +45,8 @@ CREATE TABLE link (
 )
 
 
-def create_note(cur, data: tuple[str, str, str]) -> None:
-    cur.execute(
+def create_notes(conn, data: list[tuple[str, str, str]]) -> None:
+    conn.executemany(
         """
     INSERT INTO file (name, extension, path)
     VALUES (?, ?, ?);
@@ -44,26 +55,16 @@ def create_note(cur, data: tuple[str, str, str]) -> None:
     )
 
 
-def create_notes(cur, data: list[tuple[str, str, str]]) -> None:
-    cur.executemany(
-        """
-    INSERT INTO file (name, extension, path)
-    VALUES (?, ?, ?);
-    """,
-        data,
-    )
-
-
-def read_notes(cur) -> list[tuple[int, str, str, str]]:
-    return cur.execute(
+def read_notes(conn) -> list[tuple[int, str, str, str]]:
+    return conn.execute(
         """
     SELECT * FROM file WHERE extension = '.md';
     """
     ).fetchall()
 
 
-def read_file(cur, name: str, ext: str, path: str) -> list[tuple[int, str, str, str]]:
-    return cur.execute(
+def read_file(conn, name: str, ext: str, path: str) -> list[tuple[int, str, str, str]]:
+    return conn.execute(
         """
     SELECT * FROM file WHERE name = ? AND extension = ? AND path = ?;
     """,
@@ -71,8 +72,8 @@ def read_file(cur, name: str, ext: str, path: str) -> list[tuple[int, str, str, 
     ).fetchall()
 
 
-def read_file_name(cur, name: str, ext: str) -> list[tuple[int, str, str, str]]:
-    return cur.execute(
+def read_file_name(conn, name: str, ext: str) -> list[tuple[int, str, str, str]]:
+    return conn.execute(
         """
     SELECT * FROM file WHERE name = ? AND extension = ?;
     """,
@@ -80,8 +81,8 @@ def read_file_name(cur, name: str, ext: str) -> list[tuple[int, str, str, str]]:
     ).fetchall()
 
 
-def create_link(cur, parent_id: int, child_id: int):
-    return cur.execute(
+def create_link(conn, parent_id: int, child_id: int):
+    return conn.execute(
         """
         INSERT INTO link (parent_id, child_id)
         VALUES (?, ?);
@@ -90,8 +91,8 @@ def create_link(cur, parent_id: int, child_id: int):
     )
 
 
-def read_links(cur):
-    return cur.execute(
+def read_links(conn):
+    return conn.execute(
         """
         SELECT * FROM link;
         """
@@ -113,7 +114,6 @@ if not root.exists():
     # basic sanity check, might not be necessary
     raise Exception()
 
-_registry: dict[str, list[str]] = collections.defaultdict(list)
 files = lsfiles.iterativeDFS(
     filters=lsfiles.filters.dotfiles,
     adapter=pathlib.PurePath,
@@ -122,7 +122,7 @@ files = lsfiles.iterativeDFS(
 
 # add all files to db
 create_notes(
-    cur,
+    conn,
     [
         (
             f.name[: -(len(f.suffix))],
@@ -134,9 +134,9 @@ create_notes(
     ],
 )
 
-count = 0
+dead_links = 0
 # process all files
-for _id, name, ext, path in read_notes(cur):
+for _id, name, ext, path in read_notes(conn):
     # ignore files located at 400 Archives
     if ignore_link.match(path):
         continue
@@ -156,16 +156,16 @@ for _id, name, ext, path in read_notes(cur):
         lname = components.name
         lpath = str(components.parent)
 
-        rs = read_file_name(cur, lname, ".md")
+        rs = read_file_name(conn, lname, ".md")
         if len(rs) == 1:
             # unique file found with minimum info
-            create_link(cur, parent_id=_id, child_id=rs[0][0])
+            create_link(conn, parent_id=_id, child_id=rs[0][0])
             continue
 
-        rs = read_file(cur, lname, ".md", lpath)
+        rs = read_file(conn, lname, ".md", lpath)
         if len(rs) == 1:
             # unique file found with name and relative path
-            create_link(cur, parent_id=_id, child_id=rs[0][0])
+            create_link(conn, parent_id=_id, child_id=rs[0][0])
 
         elif len(rs) == 0:
             # file not found
@@ -173,20 +173,20 @@ for _id, name, ext, path in read_notes(cur):
             f, e = os.path.splitext(lname)
             assert e != ".md", print(lname, lpath)
 
-            rs = read_file_name(cur, f, e)
+            rs = read_file_name(conn, f, e)
             if len(rs) == 1:
                 # non md file found with minimum info
-                create_link(cur, parent_id=_id, child_id=rs[0][0])
+                create_link(conn, parent_id=_id, child_id=rs[0][0])
                 continue
 
-            rs = read_file(cur, f, e, lpath)
+            rs = read_file(conn, f, e, lpath)
             if len(rs) == 1:
                 # non md file found with name and relative path
-                create_link(cur, parent_id=_id, child_id=rs[0][0])
+                create_link(conn, parent_id=_id, child_id=rs[0][0])
 
             elif len(rs) == 0:
                 # dead link
-                count += 1
+                dead_links += 1
 
             elif len(rs) > 1:
                 # multiple files found with name and relative path
@@ -199,26 +199,57 @@ for _id, name, ext, path in read_notes(cur):
                 f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
             )
 
-print(f"Dead links: {count}")
-print(len(read_links(cur)))
-
-rows = cur.execute(
+cur = conn.execute(
     """
-SELECT p.path, p.name, p.extension, c.path, c.name, c.extension
-FROM link
-JOIN file AS p
-ON link.parent_id = p.id
-JOIN file AS c
-ON link.child_id = c.id
-ORDER BY p.path, p.name, p.extension;
+SELECT f.path, f.name, f.extension
+FROM link AS l
+FULL JOIN file AS f
+ON l.child_id = f.id
+WHERE l.child_id IS NULL
+AND f.extension = '.md'
+AND f.path NOT LIKE '%Archives%';
 """
-).fetchall()
-for i in rows:
-    pp, pn, pe, cp, cn, ce = i
-    print(f"{pp}/{pn}{pe} -> {cp}/{cn}{ce}")
+)
+orphaned_md_files = [i for i in cur]
 
-con.commit()
-cur.close()
-con.close()
+cur = conn.execute(
+    """
+SELECT f.path, f.name, f.extension
+FROM link AS l
+FULL JOIN file AS f
+ON l.child_id = f.id
+WHERE l.child_id IS NULL
+AND f.extension != '.md'
+AND f.path NOT LIKE '%Archives%';
+"""
+)
+orphaned_non_md_files = [i for i in cur]
 
-# feature orphaned file (does not appear in a link)
+total_md_files, *_ = conn.execute(
+    """
+SELECT count(*)
+FROM file
+WHERE extension = '.md';
+"""
+).fetchone()
+
+total_non_md_files, *_ = conn.execute(
+    """
+SELECT count(*)
+FROM file
+WHERE extension != '.md';
+"""
+).fetchone()
+
+rapport = [
+    f"Total md files: {total_md_files}",
+    f"Total non-md files: {total_non_md_files}",
+    f"Dead links: {dead_links}",
+    f"Orphaned md files: {len(orphaned_md_files)}",
+    f"Orphaned non-md files: {len(orphaned_non_md_files)}",
+]
+
+print("\n".join(rapport))
+
+conn.commit()
+conn.close()

@@ -51,3 +51,6 @@ https://forum.obsidian.md/t/anyone-using-imdone-io-that-can-elaborate-on-its-use
 
 https://publish.obsidian.md/hub/04+-+Guides%2C+Workflows%2C+%26+Courses/Guides/Markdown+Syntax
 https://help.obsidian.md/How+to/Format+your+notes
+
+slide 53
+https://www.slideshare.net/billkarwin/models-for-hierarchical-data
