@@ -3,9 +3,10 @@ import os.path
 import sqlite3
 import re
 import pathlib
+import yaml
 
 import lsfiles
-
+import utils
 
 conn = sqlite3.connect(":memory:")
 # con = sqlite3.connect("db.sqlite")
@@ -35,11 +36,43 @@ CREATE TABLE file (
 
 conn.execute(
     """
+CREATE TABLE tag (
+    id INTEGER  NOT NULL PRIMARY KEY AUTOINCREMENT,
+	value NVARCHAR(250)  NULL
+);
+"""
+)
+
+conn.execute(
+    """
+CREATE VIRTUAL TABLE filesearch USING fts5(
+    id,
+    name,
+    extension,
+	path
+);
+"""
+)
+
+conn.execute(
+    """
 CREATE TABLE link (
     parent_id INTEGER  NOT NULL,
     child_id INTEGER  NOT NULL,
     FOREIGN KEY(parent_id) REFERENCES file(id),
 	FOREIGN KEY(child_id) REFERENCES file(id)
+);
+"""
+)
+
+conn.execute(
+    """
+CREATE TABLE file_tag (
+    file_id INTEGER  NOT NULL,
+    tag_id INTEGER  NOT NULL,
+    PRIMARY KEY (file_id, tag_id),
+    FOREIGN KEY(file_id) REFERENCES file(id),
+	FOREIGN KEY(tag_id) REFERENCES tag(id)
 );
 """
 )
@@ -97,6 +130,44 @@ def read_links(conn):
         SELECT * FROM link;
         """
     ).fetchall()
+
+
+def create_tag(conn, value: str) -> int:
+    rs = conn.execute(
+        """
+        SELECT id FROM tag WHERE value = ?;
+                 """,
+        (value,),
+    ).fetchall()
+    if rs:
+        return rs[0][0]
+    return conn.execute(
+        """
+        INSERT INTO tag (value) VALUES (?) RETURNING id;
+        """,
+        (value,),
+    ).fetchall()[0][0]
+
+
+def read_tag(conn, value: str) -> int:
+    rs = conn.execute(
+        """
+        SELECT id FROM tag WHERE value = ?;
+                 """,
+        (value,),
+    ).fetchall()
+    if rs:
+        return rs[0][0]
+    raise RuntimeError(f"Tag({value}) not found")
+
+
+def create_file_tag(conn, file_id: int, tag_id: int) -> None:
+    conn.execute(
+        """
+        INSERT INTO file_tag (file_id, tag_id) VALUES (?, ?);
+    """,
+        (file_id, tag_id),
+    )
 
 
 wikilink = re.compile(r"(?:[\[]{2}([^\[]+)[\]]{2})")
@@ -199,6 +270,36 @@ for _id, name, ext, path in read_notes(conn):
                 f"Unhandled case for: {_id=} {name=} {ext=} {path=} {lname=} {lpath=}"
             )
 
+    # YAML tag parser
+    tags = (
+        lambda data: (
+            utils.default_exc(yaml.load, {})(m.group(1), yaml.CLoader)  # type: ignore
+            if (
+                m := re.compile(r"^[-]{3}([a-zA-Z0-9-_#:\s\n/]{1,})[-]{3}").search(data)
+            )
+            else {}
+        )
+    )(raw)
+
+    for tag in tags.get("tags", []):
+        tag_id = create_tag(conn, tag)
+        create_file_tag(conn, _id, tag_id)
+
+
+# select all files containing tags and their relative tags
+cur = conn.execute(
+    """
+SELECT f.name, t.value
+FROM tag AS t
+JOIN file_tag AS ft
+ON t.id = ft.tag_id
+JOIN file AS f
+ON ft.file_id = f.id
+ORDER BY f.name;
+"""
+)
+
+# select all MD files without a reference to them
 cur = conn.execute(
     """
 SELECT f.path, f.name, f.extension
@@ -212,6 +313,7 @@ AND f.path NOT LIKE '%Archives%';
 )
 orphaned_md_files = [i for i in cur]
 
+# select all non-MD files without a reference to them
 cur = conn.execute(
     """
 SELECT f.path, f.name, f.extension
@@ -241,12 +343,111 @@ WHERE extension != '.md';
 """
 ).fetchone()
 
+total_tags, *_ = conn.execute(
+    """
+SELECT count(*)
+FROM tag;
+"""
+).fetchone()
+
+# select all files without tags
+md_files_without_tag, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+FULL JOIN file_tag AS ft
+ON f.id = ft.file_id
+WHERE ft.tag_id IS NULL
+AND f.extension = '.md'
+AND f.path NOT LIKE '%Archives%';
+"""
+).fetchone()
+
+# select all files at zettelkasten root
+md_files_zk_root, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension = '.md'
+AND f.path = '001 Zettelkasten';
+"""
+).fetchone()
+non_md_files_zk_root, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension != '.md'
+AND f.path = '001 Zettelkasten';
+"""
+).fetchone()
+md_files_in_zk, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension = '.md'
+AND f.path LIKE '001 Zettelkasten%';
+"""
+).fetchone()
+non_md_files_in_zk, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension != '.md'
+AND f.path LIKE '001 Zettelkasten%';
+"""
+).fetchone()
+
+# select all files at attachment root
+non_md_files_attachment_root, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension != '.md'
+AND f.path = '000 Attachments';
+"""
+).fetchone()
+md_files_attachment_root, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension = '.md'
+AND f.path = '000 Attachments';
+"""
+).fetchone()
+non_md_files_in_attachment, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension != '.md'
+AND f.path LIKE '000 Attachments%';
+"""
+).fetchone()
+md_files_in_attachment, *_ = conn.execute(
+    """
+SELECT COUNT(*)
+FROM file AS f
+WHERE f.extension = '.md'
+AND f.path LIKE '000 Attachments%';
+"""
+).fetchone()
+
+
 rapport = [
-    f"Total md files: {total_md_files}",
-    f"Total non-md files: {total_non_md_files}",
+    f"Total MD files: {total_md_files}",
+    f"Total non-MD files: {total_non_md_files}",
     f"Dead links: {dead_links}",
-    f"Orphaned md files: {len(orphaned_md_files)}",
-    f"Orphaned non-md files: {len(orphaned_non_md_files)}",
+    f"Orphaned MD files: {len(orphaned_md_files)}",
+    f"Orphaned non-MD files: {len(orphaned_non_md_files)}",
+    f"Total tags: {total_tags}",
+    f"MD files without tag: {md_files_without_tag}",
+    f"MD files at Zettelkasten root: {md_files_zk_root}",
+    f"non-MD files at Zettelkasten root: {non_md_files_zk_root}",
+    f"MD files at Attachments root: {md_files_attachment_root}",
+    f"Non-MD files at Attachments root: {non_md_files_attachment_root}",
+    f"MD files in Attachments: {md_files_in_attachment}",
+    f"Non-MD files in Attachments: {non_md_files_in_attachment}",
+    f"MD files in Zettelkasten: {md_files_in_zk}",
+    f"Non-MD files in Zettelkasten: {non_md_files_in_zk}",
 ]
 
 print("\n".join(rapport))
