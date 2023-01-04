@@ -141,15 +141,15 @@ def tag_finder(msg: str) -> tuple[str, int]:
 
 
 def parse_args(cmd: list[str]) -> tuple[str, int]:
-    files: list[pathlib.PurePath] = lsfiles.iterativeDFS(
-        filters=lsfiles.filters.ext(
-            {
-                ".md",
-            }
-        ),
-        adapter=pathlib.PurePath,
-        root=pathlib.Path(cli.env.get("OBSIDIAN_VAULT")),
-    )
+    # files: list[pathlib.PurePath] = lsfiles.iterativeDFS(
+    #     filters=lsfiles.filters.ext(
+    #         {
+    #             ".md",
+    #         }
+    #     ),
+    #     adapter=pathlib.PurePath,
+    #     root=pathlib.Path(cli.env.get("OBSIDIAN_VAULT")),
+    # )
 
     match cmd:
         case []:
@@ -169,16 +169,17 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
             return cli.success("open | o")
 
         case ["open" | "o", file]:
-            pat = re.compile(file, re.IGNORECASE)
-            f = [i for i in files if pat.search(i.name)]
-            if not f:
-                return cli.failure(f"no match for: {file=}")
+            # pat = re.compile(file, re.IGNORECASE)
+            # f = [i for i in files if pat.search(i.name)]
+            # if not f:
+            #     return cli.failure(f"no match for: {file=}")
             uri = URI_OPEN.format(
                 vault_id=cli.env.get("VAULT_ID"),
-                filename=obsidian_encode(to_obsidian_root(files[0])),
+                filename=obsidian_encode(file),
             )
             subprocess.run(["open", uri])
-            return cli.success(f"match for {file=} : {files=}")
+            # return cli.success(f"match for {file=} : {files=}")
+            return cli.success()
 
         case ["find" | "f", query]:
             if "#" in query:
@@ -216,7 +217,7 @@ def main(*args) -> tuple[str, int]:
     if not ok:
         return cli.failure(msg)
 
-    res = subprocess.run(["pgrep", "Obsidian"], capture_output=True)
+    res = subprocess.run(["pgrep", "obsidian"], capture_output=True)
     if res.returncode:
         subprocess.run(
             [

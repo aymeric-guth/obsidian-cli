@@ -1,3 +1,4 @@
+import dataclasses
 import os
 import os.path
 import sqlite3
@@ -8,8 +9,18 @@ import yaml
 import lsfiles
 import utils
 
+from dataclasses import dataclass
+
+
+@dataclass
+class Note:
+    name: str
+    path: str
+    ext: str
+
+
 conn = sqlite3.connect(":memory:")
-# con = sqlite3.connect("db.sqlite")
+# conn = sqlite3.connect("db.sqlite")
 
 conn.execute(
     """
@@ -114,6 +125,17 @@ def read_file_name(conn, name: str, ext: str) -> list[tuple[int, str, str, str]]
     ).fetchall()
 
 
+def get_file_by_filename(conn, filename: str):
+    return conn.execute(
+        """
+    SELECT path, name, extension FROM file WHERE name LIKE ? AND extension = '.md';
+    """,
+        [
+            filename,
+        ],
+    ).fetchone()
+
+
 def create_link(conn, parent_id: int, child_id: int):
     return conn.execute(
         """
@@ -168,6 +190,49 @@ def create_file_tag(conn, file_id: int, tag_id: int) -> None:
     """,
         (file_id, tag_id),
     )
+
+
+def find_tags_from_filename(conn, filename: str) -> list[str]:
+    rs = conn.execute(
+        """
+        SELECT t.value
+        FROM tag AS t
+        JOIN file_tag AS ft
+        ON t.id = ft.tag_id
+        JOIN file AS f
+        ON ft.file_id = f.id
+        WHERE f.name LIKE ?
+        ORDER BY t.value;
+    """,
+        (filename,),
+    ).fetchall()
+    return [tag for tag, *_ in rs]
+
+
+def find_note_by_name(conn, name: str) -> list[Note]:
+    rs = conn.execute(
+        """
+        SELECT name, path, extension
+        FROM file
+        WHERE name LIKE ?;
+    """,
+        (name,),
+    ).fetchall()
+    return [Note(*note) for note in rs]
+
+
+# select all files containing tags and their relative tags
+cur = conn.execute(
+    """
+SELECT f.name, t.value
+FROM tag AS t
+JOIN file_tag AS ft
+ON t.id = ft.tag_id
+JOIN file AS f
+ON ft.file_id = f.id
+ORDER BY f.name;
+"""
+)
 
 
 wikilink = re.compile(r"(?:[\[]{2}([^\[]+)[\]]{2})")
@@ -450,7 +515,35 @@ rapport = [
     f"Non-MD files in Zettelkasten: {non_md_files_in_zk}",
 ]
 
-print("\n".join(rapport))
 
-conn.commit()
-conn.close()
+def list_tags(conn) -> list[str]:
+    rs = conn.execute(
+        """
+    SELECT t.value
+    FROM tag AS t
+    ORDER BY t.value DESC;
+    """
+    ).fetchall()
+    res = []
+    for tag, *_ in rs:
+        res.append(tag)
+    return res
+
+
+def list_files_containing_tag(conn, tag: str):
+    return conn.execute(
+        """
+    SELECT f.path, f.name, f.extension
+    FROM file AS f
+    JOIN file_tag AS ft
+    ON f.id = ft.file_id
+    JOIN tag AS t
+    ON ft.tag_id = t.id
+    WHERE t.value = ?
+    ORDER BY t.value DESC;
+    """,
+        (tag,),
+    ).fetchall()
+
+
+# print("\n".join(rapport))
