@@ -9,7 +9,7 @@ SELECT id, path, name, extension FROM file WHERE extension = '.md';
 SELECT id FROM file WHERE name = :name AND extension = '.md' AND path = :path;
 
 -- name: find-by-name
-SELECT id
+SELECT id, path, name, extension
 FROM file
 WHERE name LIKE :name
 AND extension = '.md';

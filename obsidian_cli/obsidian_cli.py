@@ -5,7 +5,6 @@ import pathlib
 import os
 import json
 import subprocess
-import urllib.parse
 import time
 import re
 import pathlib
@@ -15,8 +14,7 @@ import ipdb
 from utils import cli, default_exc
 import lsfiles
 
-from ._types import Note
-from .core import note_repo, tag_repo, file_tag_repo, tag_repo, file_repo, link_repo
+from . import repo
 
 
 URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
@@ -26,14 +24,6 @@ if not USER_HOME:
     raise RuntimeError("can you kindly fuck off, sir")
 OBSIDIAN_DIR_DARWIN = f"{USER_HOME}/Library/Application Support/obsidian"
 OBSIDIAN_DIR_LINUX = f"{USER_HOME}/snap/obsidian/current/.config/obsidian"
-
-
-def obsidian_encode(param: str, meta: str = "") -> str:
-    return urllib.parse.quote(f"{meta}{param}")
-
-
-def to_obsidian_root(path: pathlib.PurePath | pathlib.Path) -> str:
-    return str(path)[len(str(cli.env.get("OBSIDIAN_VAULT"))) :]
 
 
 def check_env() -> tuple[str, int]:
@@ -85,76 +75,64 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
             return parse_args(["open", cli.env.get("STACK_FILE")])
 
         case ["open" | "o", file]:
-            rs = queries.note.find_by_name(conn, file)
+            rs = repo.note.find_by_name(file)
             if not rs:
                 return cli.failure(f"{file=} not found")
-            elif len(rs) > 1:
-                rs = rs[0]
             uri = URI_OPEN.format(
                 vault_id=cli.env.get("VAULT_ID"),
-                filename=obsidian_encode(f"{rs[0]}/{rs[1]}{rs[2]}"),
+                filename=rs[0].to_obsidian(),
             )
             subprocess.run(["open", uri])
             return cli.success()
 
-        case ["match" | "m"]:
-            return cli.failure("match | m")
-            # [
-            #    t
-            #    for f in files
-            #    if (t := catcher(tag_parser)(lambda f: lambda: open(f).read())(f))
-            #    is not None
-            # ]
+        case ["match" | "m", "file" | "f", name]:
+            # find file matching filename -> list[Note]
+            for note in repo.note.find_by_name(name):
+                sys.stdout.write(f"{note!s}\n")
+            return cli.success()
 
         case ["list" | "l", "tags" | "t"]:
             # find all tags
-            for tag, *_ in queries.tag.read_all(conn):
+            for tag in repo.tag.read_all():
                 sys.stdout.write(tag + "\n")
             return cli.success()
 
         case ["find" | "f", "file" | "f", tag]:
             # find file containing {tag}
-            for p, f, e in queries.file_tag.find_file_by_tag(conn, tag):
-                sys.stdout.write(f"{p}/{f}{e}\n")
+            for note in repo.file_tag.find_file_by_tag(tag):
+                sys.stdout.write(f"{note!s}\n")
             return cli.failure()
 
         case ["find" | "f", "tag" | "t", file]:
             # find tags in {file}
-            notes = [Note(*note) for note in queries.note.find_by_name(conn, file)]
+            notes = repo.note.find_by_name(file)
             if not notes:
                 return cli.failure(f"{file=} not found")
             elif len(notes) > 1:
                 return cli.failure(f"found multiple matching files, use FQDN")
             note = notes[0]
-            tags = queries.file_tag.find_tag_by_filename(conn, note.name)
+            tags = repo.file_tag.find_tag_by_filename(note.name)
             if not tags:
                 cli.failure(f"{file=} has no tags")
             for tag in tags:
                 sys.stdout.write(tag + "\n")
             return cli.success()
 
+        case ["find" | "f", "link" | "l", file]:
+            # find file(s) containing link pattern -> list[Note]
+            notes = repo.link.find_file_by_link(file)
+            if not notes:
+                return cli.failure(f"{file=} not found")
+            for note in notes:
+                sys.stdout.write(f"{note!s}\n")
+            return cli.success()
+
+        case ["find" | "f", "orphaned" | "o"]:
+            # find orphaned files (files that are not linked)
+            ...
+
         case _:
             return cli.failure(f"unrecognised command: {cmd}")
-
-
-# find file matching filename -> list[Note]
-# find file containing link pattern -> list[Note]
-# find orphaned files (files that are not linked)
-# find backlink for target file (reference to target file in whole database)
-
-# file, every non-md file
-# path, name, ext
-# note, md file
-# path, name
-
-# link
-# relation note -> file | note
-
-# tag
-# name
-
-# tag_file
-# note -> tag
 
 
 def init_db():
@@ -175,7 +153,7 @@ def init_db():
     )
 
     # add all files to db
-    file_repo.create_many(
+    repo.file.create_many(
         [
             (
                 p if (p := str(f.parent)[vault_prefix:]) else ".",
@@ -189,12 +167,9 @@ def init_db():
 
     dead_links = 0
     # process all files
-    for note in note_repo.read_all():
+    for note in repo.note.read_all():
         # ignore files located at 400 Archives
         if ignore_link.match(note.path):
-            continue
-        # ignore non markdown files
-        elif note.extension != ".md":
             continue
         # file loader
         raw = (lambda f: open(f).read())(note.to_md())
@@ -208,16 +183,16 @@ def init_db():
             lname = components.name
             lpath = str(components.parent)
 
-            note_id = note_repo.find_by_name_path(name=lname, path=lpath)
+            note_id = repo.note.find_by_name_path(name=lname, path=lpath)
             if note_id is not None:
                 # unique file found with minimum info
-                link_repo.create_one(parent_id=note.id, child_id=note_id)
+                repo.link.create_one(parent_id=note.id, child_id=note_id)
                 continue
 
-            rs = note_repo.find_by_name(name=lname)
+            rs = repo.note.find_by_name(name=lname)
             if len(rs) == 1:
                 # unique file found with name and relative path
-                link_repo.create_one(parent_id=note.id, child_id=rs[0])
+                repo.link.create_one(parent_id=note.id, child_id=rs[0].id)
 
             elif len(rs) == 0:
                 # file not found
@@ -225,18 +200,18 @@ def init_db():
                 f, e = os.path.splitext(lname)
                 assert e != ".md", print(lname, lpath)
 
-                rs = file_repo.find_by_name_extension(name=f, extension=e)
+                rs = repo.file.find_by_name_extension(name=f, extension=e)
                 if len(rs) == 1:
                     # non md file found with minimum info
-                    link_repo.create_one(parent_id=note.id, child_id=rs[0])
+                    repo.link.create_one(parent_id=note.id, child_id=rs[0])
                     continue
 
-                rs = file_repo.find_by_name_extension_path(
+                rs = repo.file.find_by_name_extension_path(
                     name=f, extension=e, path=lpath
                 )
                 if rs is not None:
                     # non md file found with name and relative path
-                    link_repo.create_one(parent_id=note.id, child_id=rs)
+                    repo.link.create_one(parent_id=note.id, child_id=rs)
                 else:
                     # dead link
                     dead_links += 1
@@ -254,10 +229,10 @@ def init_db():
         )(raw)
 
         for tag in tags.get("tags", []):
-            file_tag_repo.create_one(note.id, tag_repo.create_one(tag))
+            repo.file_tag.create_one(note.id, repo.tag.create_one(tag))
 
 
-def main(*args) -> tuple[str, int]:
+def _main(*args) -> tuple[str, int]:
     """
     main function
     """
@@ -283,10 +258,8 @@ def main(*args) -> tuple[str, int]:
         process = "obsidian"
 
     res = subprocess.run(["pgrep", process], capture_output=True)
-    # possibilite d'alterer le comportement de l'utilitaire
-    # dans l'etat ne fait pas passer obsidian au premier plan
+
     if res.returncode == 0:
-        # return cli.success("obsidian process is up")
         return parse_args(*args)
     subprocess.run(
         cmd,
@@ -305,14 +278,8 @@ def main(*args) -> tuple[str, int]:
         if c >= 10:
             return cli.failure(f"could not open obsidian, tried {c} times")
 
-    # return cli.success()
     return parse_args(*args)
-    # return cli.success(f"opened obsidian after {c} tries")
 
 
-def _main() -> int:
-    return cli.py_fnc(main)(sys.argv[1:])
-
-
-if __name__ == "__main__":
-    sys.exit(_main())
+def main() -> int:
+    return cli.py_fnc(_main)(sys.argv[1:])

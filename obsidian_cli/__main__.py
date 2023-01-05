@@ -2,10 +2,10 @@
 
 # from .db import conn, read_tags, read_files
 # from .obsidian_cli import main
-from .opener import _main
+from .obsidian_cli import main
 
 if __name__ == "__main__":
-    _main()
+    main()
     # if len(sys.argv) == 2 and sys.argv[1] == "tags":
     #     tags = read_tags(conn)
     #     for tag in tags:

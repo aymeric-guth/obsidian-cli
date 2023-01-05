@@ -10,8 +10,11 @@ CREATE TABLE IF NOT EXISTS file_tag (
 -- name: create-one!
 INSERT INTO file_tag (file_id, tag_id) VALUES (:file_id, :tag_id);
 
+-- name: create-many*!
+INSERT INTO file_tag (file_id, tag_id) VALUES (:file_id, :tag_id);
+
 -- name: find-file-by-tag
-SELECT f.path, f.name, f.extension
+SELECT f.id, f.path, f.name, f.extension
 FROM file AS f
 JOIN file_tag AS ft
 ON f.id = ft.file_id

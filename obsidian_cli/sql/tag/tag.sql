@@ -12,5 +12,11 @@ SELECT t.name
 FROM tag AS t
 ORDER BY t.name DESC;
 
+-- name: read-one$
+SELECT id FROM tag WHERE name = :name;
+
+-- name: create-one<!
+INSERT INTO tag (name) VALUES (:name) RETURNING id;
+
 -- name: drop-table#
 DROP TABLE IF EXISTS tag;

@@ -1,7 +1,23 @@
 from dataclasses import dataclass
 import pathlib
+import urllib.parse
 
 from utils import cli
+
+
+# file, every non-md file
+# path, name, ext
+# note, md file
+# path, name
+
+# link
+# relation note -> file | note
+
+# tag
+# name
+
+# tag_file
+# note -> tag
 
 
 @dataclass(frozen=True)
@@ -24,6 +40,12 @@ class NoteId:
             / self.path
             / f"{self.name}{self.extension}"
         )
+
+    def to_obsidian(self) -> str:
+        return urllib.parse.quote(self.__str__())
+
+    def __str__(self) -> str:
+        return f"{self.path}/{self.name}{self.extension}"
 
 
 @dataclass(frozen=True)
