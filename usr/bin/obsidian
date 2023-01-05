@@ -1,3 +1,0 @@
-#!/bin/sh
-
-"$WORKSPACE"/.venv/bin/python -m obsidian_cli $*

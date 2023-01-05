@@ -42,7 +42,7 @@ obs open | o [filename]
 obs find | f #query | filename
 ```
 
-## References
+### References
 
 https://help.obsidian.md/Advanced+topics/Using+obsidian+URI
 https://forum.obsidian.md/t/use-obsidian-uri-to-open-a-static-link-with-id/17360
@@ -54,3 +54,7 @@ https://help.obsidian.md/How+to/Format+your+notes
 
 slide 53
 https://www.slideshare.net/billkarwin/models-for-hierarchical-data
+
+#### AIOSQL
+
+https://nackjicholson.github.io/aiosql/defining-sql-queries.html#query-names

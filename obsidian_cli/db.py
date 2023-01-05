@@ -1,4 +1,3 @@
-import dataclasses
 import os
 import os.path
 import sqlite3
@@ -6,6 +5,7 @@ import re
 import pathlib
 import yaml
 
+import aiosql
 import lsfiles
 import utils
 
@@ -19,74 +19,21 @@ class Note:
     ext: str
 
 
+# queries = aiosql.from_path(pathlib.Path(__file__).parent / "sql", "aiosqlite")
+queries = aiosql.from_path(pathlib.Path(__file__).parent / "sql", "sqlite3")
+print(pathlib.Path(__file__).parent)
 conn = sqlite3.connect(":memory:")
 # conn = sqlite3.connect("db.sqlite")
 
-conn.execute(
-    """
-DROP TABLE IF EXISTS link;
-"""
-)
+queries.link.drop_table(conn)
+queries.tag.drop_table(conn)
+queries.file_tag.drop_table(conn)
+queries.file.drop_table(conn)
 
-conn.execute(
-    """
-DROP TABLE IF EXISTS file;
-"""
-)
-
-conn.execute(
-    """
-CREATE TABLE file (
-    id INTEGER  NOT NULL PRIMARY KEY AUTOINCREMENT,
-	name NVARCHAR(250)  NULL,
-    extension NVARCHAR(250)  NULL,
-	path NVARCHAR(250)  NULL
-);
-"""
-)
-
-conn.execute(
-    """
-CREATE TABLE tag (
-    id INTEGER  NOT NULL PRIMARY KEY AUTOINCREMENT,
-	value NVARCHAR(250)  NULL
-);
-"""
-)
-
-conn.execute(
-    """
-CREATE VIRTUAL TABLE filesearch USING fts5(
-    id,
-    name,
-    extension,
-	path
-);
-"""
-)
-
-conn.execute(
-    """
-CREATE TABLE link (
-    parent_id INTEGER  NOT NULL,
-    child_id INTEGER  NOT NULL,
-    FOREIGN KEY(parent_id) REFERENCES file(id),
-	FOREIGN KEY(child_id) REFERENCES file(id)
-);
-"""
-)
-
-conn.execute(
-    """
-CREATE TABLE file_tag (
-    file_id INTEGER  NOT NULL,
-    tag_id INTEGER  NOT NULL,
-    PRIMARY KEY (file_id, tag_id),
-    FOREIGN KEY(file_id) REFERENCES file(id),
-	FOREIGN KEY(tag_id) REFERENCES tag(id)
-);
-"""
-)
+queries.file.create_table(conn)
+queries.link.create_table(conn)
+queries.tag.create_table(conn)
+queries.file_tag.create_table(conn)
 
 
 def create_notes(conn, data: list[tuple[str, str, str]]) -> None:
@@ -157,7 +104,7 @@ def read_links(conn):
 def create_tag(conn, value: str) -> int:
     rs = conn.execute(
         """
-        SELECT id FROM tag WHERE value = ?;
+        SELECT id FROM tag WHERE name = ?;
                  """,
         (value,),
     ).fetchall()
@@ -165,7 +112,7 @@ def create_tag(conn, value: str) -> int:
         return rs[0][0]
     return conn.execute(
         """
-        INSERT INTO tag (value) VALUES (?) RETURNING id;
+        INSERT INTO tag (name) VALUES (?) RETURNING id;
         """,
         (value,),
     ).fetchall()[0][0]
@@ -195,14 +142,14 @@ def create_file_tag(conn, file_id: int, tag_id: int) -> None:
 def find_tags_from_filename(conn, filename: str) -> list[str]:
     rs = conn.execute(
         """
-        SELECT t.value
+        SELECT t.name
         FROM tag AS t
         JOIN file_tag AS ft
         ON t.id = ft.tag_id
         JOIN file AS f
         ON ft.file_id = f.id
         WHERE f.name LIKE ?
-        ORDER BY t.value;
+        ORDER BY t.name;
     """,
         (filename,),
     ).fetchall()
@@ -224,7 +171,7 @@ def find_note_by_name(conn, name: str) -> list[Note]:
 # select all files containing tags and their relative tags
 cur = conn.execute(
     """
-SELECT f.name, t.value
+SELECT f.name, t.name
 FROM tag AS t
 JOIN file_tag AS ft
 ON t.id = ft.tag_id
@@ -354,7 +301,7 @@ for _id, name, ext, path in read_notes(conn):
 # select all files containing tags and their relative tags
 cur = conn.execute(
     """
-SELECT f.name, t.value
+SELECT f.name, t.name
 FROM tag AS t
 JOIN file_tag AS ft
 ON t.id = ft.tag_id
@@ -519,9 +466,9 @@ rapport = [
 def list_tags(conn) -> list[str]:
     rs = conn.execute(
         """
-    SELECT t.value
+    SELECT t.name
     FROM tag AS t
-    ORDER BY t.value DESC;
+    ORDER BY t.name DESC;
     """
     ).fetchall()
     res = []
@@ -539,8 +486,8 @@ def list_files_containing_tag(conn, tag: str):
     ON f.id = ft.file_id
     JOIN tag AS t
     ON ft.tag_id = t.id
-    WHERE t.value = ?
-    ORDER BY t.value DESC;
+    WHERE t.name = ?
+    ORDER BY t.name DESC;
     """,
         (tag,),
     ).fetchall()

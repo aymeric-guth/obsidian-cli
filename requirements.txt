@@ -7,3 +7,5 @@ ipython
 pyyaml
 rich
 ipdb
+aiosql
+aiosqlite

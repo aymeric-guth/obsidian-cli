@@ -25,7 +25,8 @@ USER_HOME = os.getenv("HOME")
 if not USER_HOME:
     raise RuntimeError("can you kindly fuck off, sir")
 OBSIDIAN_DIR_DARWIN = f"{USER_HOME}/Library/Application Support/obsidian"
-OBSIDIAN_DIR_LINUX = f"{USER_HOME}/.config/obsidian"
+# OBSIDIAN_DIR_LINUX = f"{USER_HOME}/.config/obsidian"
+OBSIDIAN_DIR_LINUX = f"{USER_HOME}/snap/obsidian/current/.config/obsidian"
 
 
 def obsidian_encode(param: str, meta: str = "") -> str:
@@ -134,12 +135,19 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
             return cli.failure(f"unrecognised command: {cmd}")
 
 
+# find file matching filename -> list[Note]
+# find file containing link pattern -> list[Note]
+# find orphaned files (files that are not linked)
+# find backlink for target file (reference to target file in whole database)
+
+
 def main(*args) -> tuple[str, int]:
     """
     main function
     """
     (msg, ok) = check_env()
     if not ok:
+        print("check_env failed")
         return cli.failure(msg)
 
     _env = os.environ.copy()
@@ -158,7 +166,10 @@ def main(*args) -> tuple[str, int]:
         process = "obsidian"
 
     res = subprocess.run(["pgrep", process], capture_output=True)
+    # possibilite d'alterer le comportement de l'utilitaire
+    # dans l'etat ne fait pas passer obsidian au premier plan
     if res.returncode == 0:
+        # return cli.success("obsidian process is up")
         return parse_args(*args)
     subprocess.run(
         cmd,
@@ -177,6 +188,7 @@ def main(*args) -> tuple[str, int]:
         if c >= 10:
             return cli.failure(f"could not open obsidian, tried {c} times")
 
+    # return cli.success()
     return parse_args(*args)
     # return cli.success(f"opened obsidian after {c} tries")
 
