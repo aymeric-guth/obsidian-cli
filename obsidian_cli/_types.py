@@ -3,6 +3,6 @@ from dataclasses import dataclass
 
 @dataclass
 class Note:
-    name: str
     path: str
+    name: str
     ext: str

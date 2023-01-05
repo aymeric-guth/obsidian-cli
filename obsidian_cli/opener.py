@@ -8,15 +8,8 @@ import time
 
 from utils import cli, default_exc
 
-from .db import (
-    conn,
-    find_note_by_name,
-    list_tags,
-    list_files_containing_tag,
-    get_file_by_filename,
-    find_tags_from_filename,
-    find_note_by_name,
-)
+from ._types import Note
+from .core import note, tag, file_tag, tag, file, link
 
 
 URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
@@ -80,15 +73,17 @@ def check_env() -> tuple[str, int]:
 def parse_args(cmd: list[str]) -> tuple[str, int]:
     match cmd:
         case []:
-            return cli.failure("[]")
+            return cli.success()
 
         case ["open" | "o"]:
             return parse_args(["open", cli.env.get("STACK_FILE")])
 
         case ["open" | "o", file]:
-            rs = get_file_by_filename(conn, file)
+            rs = queries.note.find_by_name(conn, file)
             if not rs:
                 return cli.failure(f"{file=} not found")
+            elif len(rs) > 1:
+                rs = rs[0]
             uri = URI_OPEN.format(
                 vault_id=cli.env.get("VAULT_ID"),
                 filename=obsidian_encode(f"{rs[0]}/{rs[1]}{rs[2]}"),
@@ -105,26 +100,27 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
             #    is not None
             # ]
 
-        case ["find" | "f"]:
-            return cli.failure("usage: find | f tag[/sub-tag] | filename")
-
         case ["list" | "l", "tags" | "t"]:
-            for tag in list_tags(conn):
+            # find all tags
+            for tag, *_ in queries.tag.read_all(conn):
                 sys.stdout.write(tag + "\n")
             return cli.success()
 
         case ["find" | "f", "file" | "f", tag]:
-            for p, f, e in list_files_containing_tag(conn, tag):
+            # find file containing {tag}
+            for p, f, e in queries.file_tag.find_file_by_tag(conn, tag):
                 sys.stdout.write(f"{p}/{f}{e}\n")
             return cli.failure()
 
         case ["find" | "f", "tag" | "t", file]:
-            notes = find_note_by_name(conn, file)
+            # find tags in {file}
+            notes = [Note(*note) for note in queries.note.find_by_name(conn, file)]
             if not notes:
                 return cli.failure(f"{file=} not found")
             elif len(notes) > 1:
                 return cli.failure(f"found multiple matching files, use FQDN")
-            tags = find_tags_from_filename(conn, notes[0].name)
+            note = notes[0]
+            tags = queries.file_tag.find_tag_by_filename(conn, note.name)
             if not tags:
                 cli.failure(f"{file=} has no tags")
             for tag in tags:
@@ -139,6 +135,20 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
 # find file containing link pattern -> list[Note]
 # find orphaned files (files that are not linked)
 # find backlink for target file (reference to target file in whole database)
+
+# file, every non-md file
+# path, name, ext
+# note, md file
+# path, name
+
+# link
+# relation note -> file | note
+
+# tag
+# name
+
+# tag_file
+# note -> tag
 
 
 def main(*args) -> tuple[str, int]:

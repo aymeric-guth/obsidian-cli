@@ -6,5 +6,15 @@ CREATE TABLE IF NOT EXISTS file (
 	path NVARCHAR(250)  NULL
 );
 
+-- name: create-many*!
+INSERT INTO file (path, name, extension)
+VALUES (:path, :name, :extension);
+
+-- name: find-by-name-extension
+SELECT * FROM file WHERE name = :name AND extension = :extension;
+
+-- name: find-by-name-extension-path
+SELECT * FROM file WHERE name = :name AND extension = :extension AND path = :path;
+
 -- name: drop-table#
 DROP TABLE IF EXISTS file;

@@ -6,5 +6,12 @@ CREATE TABLE IF NOT EXISTS link (
 	FOREIGN KEY(child_id) REFERENCES file(id)
 );
 
+-- name: create-one
+INSERT INTO link (parent_id, child_id)
+VALUES (:parent_id, :child_id);
+
+-- name: read-many
+SELECT * FROM link;
+
 -- name: drop-table#
 DROP TABLE IF EXISTS link;

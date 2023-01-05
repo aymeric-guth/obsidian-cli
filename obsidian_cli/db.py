@@ -36,71 +36,6 @@ queries.tag.create_table(conn)
 queries.file_tag.create_table(conn)
 
 
-def create_notes(conn, data: list[tuple[str, str, str]]) -> None:
-    conn.executemany(
-        """
-    INSERT INTO file (name, extension, path)
-    VALUES (?, ?, ?);
-    """,
-        data,
-    )
-
-
-def read_notes(conn) -> list[tuple[int, str, str, str]]:
-    return conn.execute(
-        """
-    SELECT * FROM file WHERE extension = '.md';
-    """
-    ).fetchall()
-
-
-def read_file(conn, name: str, ext: str, path: str) -> list[tuple[int, str, str, str]]:
-    return conn.execute(
-        """
-    SELECT * FROM file WHERE name = ? AND extension = ? AND path = ?;
-    """,
-        [name, ext, path],
-    ).fetchall()
-
-
-def read_file_name(conn, name: str, ext: str) -> list[tuple[int, str, str, str]]:
-    return conn.execute(
-        """
-    SELECT * FROM file WHERE name = ? AND extension = ?;
-    """,
-        [name, ext],
-    ).fetchall()
-
-
-def get_file_by_filename(conn, filename: str):
-    return conn.execute(
-        """
-    SELECT path, name, extension FROM file WHERE name LIKE ? AND extension = '.md';
-    """,
-        [
-            filename,
-        ],
-    ).fetchone()
-
-
-def create_link(conn, parent_id: int, child_id: int):
-    return conn.execute(
-        """
-        INSERT INTO link (parent_id, child_id)
-        VALUES (?, ?);
-        """,
-        (parent_id, child_id),
-    )
-
-
-def read_links(conn):
-    return conn.execute(
-        """
-        SELECT * FROM link;
-        """
-    ).fetchall()
-
-
 def create_tag(conn, value: str) -> int:
     rs = conn.execute(
         """
@@ -118,44 +53,6 @@ def create_tag(conn, value: str) -> int:
     ).fetchall()[0][0]
 
 
-def read_tag(conn, value: str) -> int:
-    rs = conn.execute(
-        """
-        SELECT id FROM tag WHERE value = ?;
-                 """,
-        (value,),
-    ).fetchall()
-    if rs:
-        return rs[0][0]
-    raise RuntimeError(f"Tag({value}) not found")
-
-
-def create_file_tag(conn, file_id: int, tag_id: int) -> None:
-    conn.execute(
-        """
-        INSERT INTO file_tag (file_id, tag_id) VALUES (?, ?);
-    """,
-        (file_id, tag_id),
-    )
-
-
-def find_tags_from_filename(conn, filename: str) -> list[str]:
-    rs = conn.execute(
-        """
-        SELECT t.name
-        FROM tag AS t
-        JOIN file_tag AS ft
-        ON t.id = ft.tag_id
-        JOIN file AS f
-        ON ft.file_id = f.id
-        WHERE f.name LIKE ?
-        ORDER BY t.name;
-    """,
-        (filename,),
-    ).fetchall()
-    return [tag for tag, *_ in rs]
-
-
 def find_note_by_name(conn, name: str) -> list[Note]:
     rs = conn.execute(
         """
@@ -166,20 +63,6 @@ def find_note_by_name(conn, name: str) -> list[Note]:
         (name,),
     ).fetchall()
     return [Note(*note) for note in rs]
-
-
-# select all files containing tags and their relative tags
-cur = conn.execute(
-    """
-SELECT f.name, t.name
-FROM tag AS t
-JOIN file_tag AS ft
-ON t.id = ft.tag_id
-JOIN file AS f
-ON ft.file_id = f.id
-ORDER BY f.name;
-"""
-)
 
 
 wikilink = re.compile(r"(?:[\[]{2}([^\[]+)[\]]{2})")
@@ -204,14 +87,14 @@ files = lsfiles.iterativeDFS(
 )
 
 # add all files to db
-create_notes(
+queries.file.create_many(
     conn,
     [
-        (
-            f.name[: -(len(f.suffix))],
-            f.suffix,
-            p if (p := str(f.parent)[vault_prefix:]) else ".",
-        )
+        {
+            "name": f.name[: -(len(f.suffix))],
+            "extension": f.suffix,
+            "path": p if (p := str(f.parent)[vault_prefix:]) else ".",
+        }
         for f in files
         if not ignore_path.match(str(f.parent))
     ],
@@ -219,7 +102,7 @@ create_notes(
 
 dead_links = 0
 # process all files
-for _id, name, ext, path in read_notes(conn):
+for _id, name, ext, path in queries.note.read_many(conn):
     # ignore files located at 400 Archives
     if ignore_link.match(path):
         continue
@@ -239,16 +122,18 @@ for _id, name, ext, path in read_notes(conn):
         lname = components.name
         lpath = str(components.parent)
 
-        rs = read_file_name(conn, lname, ".md")
+        rs = queries.file.find_by_name_extension_path(
+            conn, name=name, extension=ext, path=path
+        )
         if len(rs) == 1:
             # unique file found with minimum info
-            create_link(conn, parent_id=_id, child_id=rs[0][0])
+            queries.link.create(conn, parent_id=_id, child_id=rs[0][0])
             continue
 
-        rs = read_file(conn, lname, ".md", lpath)
+        rs = queries.note.find_by_name_path(conn, lname, lpath)
         if len(rs) == 1:
             # unique file found with name and relative path
-            create_link(conn, parent_id=_id, child_id=rs[0][0])
+            queries.link.create(conn, parent_id=_id, child_id=rs[0][0])
 
         elif len(rs) == 0:
             # file not found
@@ -256,16 +141,18 @@ for _id, name, ext, path in read_notes(conn):
             f, e = os.path.splitext(lname)
             assert e != ".md", print(lname, lpath)
 
-            rs = read_file_name(conn, f, e)
+            rs = queries.file.find_by_name_extension(conn, f, e)
             if len(rs) == 1:
                 # non md file found with minimum info
-                create_link(conn, parent_id=_id, child_id=rs[0][0])
+                queries.link.create(conn, parent_id=_id, child_id=rs[0][0])
                 continue
 
-            rs = read_file(conn, f, e, lpath)
+            queries.file.find_by_name_extension_path(
+                conn, path=path, name=f, extension=e
+            )
             if len(rs) == 1:
                 # non md file found with name and relative path
-                create_link(conn, parent_id=_id, child_id=rs[0][0])
+                queries.link.create(conn, parent_id=_id, child_id=rs[0][0])
 
             elif len(rs) == 0:
                 # dead link
@@ -295,202 +182,4 @@ for _id, name, ext, path in read_notes(conn):
 
     for tag in tags.get("tags", []):
         tag_id = create_tag(conn, tag)
-        create_file_tag(conn, _id, tag_id)
-
-
-# select all files containing tags and their relative tags
-cur = conn.execute(
-    """
-SELECT f.name, t.name
-FROM tag AS t
-JOIN file_tag AS ft
-ON t.id = ft.tag_id
-JOIN file AS f
-ON ft.file_id = f.id
-ORDER BY f.name;
-"""
-)
-
-# select all MD files without a reference to them
-cur = conn.execute(
-    """
-SELECT f.path, f.name, f.extension
-FROM link AS l
-FULL JOIN file AS f
-ON l.child_id = f.id
-WHERE l.child_id IS NULL
-AND f.extension = '.md'
-AND f.path NOT LIKE '%Archives%';
-"""
-)
-orphaned_md_files = [i for i in cur]
-
-# select all non-MD files without a reference to them
-cur = conn.execute(
-    """
-SELECT f.path, f.name, f.extension
-FROM link AS l
-FULL JOIN file AS f
-ON l.child_id = f.id
-WHERE l.child_id IS NULL
-AND f.extension != '.md'
-AND f.path NOT LIKE '%Archives%';
-"""
-)
-orphaned_non_md_files = [i for i in cur]
-
-total_md_files, *_ = conn.execute(
-    """
-SELECT count(*)
-FROM file
-WHERE extension = '.md';
-"""
-).fetchone()
-
-total_non_md_files, *_ = conn.execute(
-    """
-SELECT count(*)
-FROM file
-WHERE extension != '.md';
-"""
-).fetchone()
-
-total_tags, *_ = conn.execute(
-    """
-SELECT count(*)
-FROM tag;
-"""
-).fetchone()
-
-# select all files without tags
-md_files_without_tag, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-FULL JOIN file_tag AS ft
-ON f.id = ft.file_id
-WHERE ft.tag_id IS NULL
-AND f.extension = '.md'
-AND f.path NOT LIKE '%Archives%';
-"""
-).fetchone()
-
-# select all files at zettelkasten root
-md_files_zk_root, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension = '.md'
-AND f.path = '001 Zettelkasten';
-"""
-).fetchone()
-non_md_files_zk_root, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension != '.md'
-AND f.path = '001 Zettelkasten';
-"""
-).fetchone()
-md_files_in_zk, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension = '.md'
-AND f.path LIKE '001 Zettelkasten%';
-"""
-).fetchone()
-non_md_files_in_zk, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension != '.md'
-AND f.path LIKE '001 Zettelkasten%';
-"""
-).fetchone()
-
-# select all files at attachment root
-non_md_files_attachment_root, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension != '.md'
-AND f.path = '000 Attachments';
-"""
-).fetchone()
-md_files_attachment_root, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension = '.md'
-AND f.path = '000 Attachments';
-"""
-).fetchone()
-non_md_files_in_attachment, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension != '.md'
-AND f.path LIKE '000 Attachments%';
-"""
-).fetchone()
-md_files_in_attachment, *_ = conn.execute(
-    """
-SELECT COUNT(*)
-FROM file AS f
-WHERE f.extension = '.md'
-AND f.path LIKE '000 Attachments%';
-"""
-).fetchone()
-
-
-rapport = [
-    f"Total MD files: {total_md_files}",
-    f"Total non-MD files: {total_non_md_files}",
-    f"Dead links: {dead_links}",
-    f"Orphaned MD files: {len(orphaned_md_files)}",
-    f"Orphaned non-MD files: {len(orphaned_non_md_files)}",
-    f"Total tags: {total_tags}",
-    f"MD files without tag: {md_files_without_tag}",
-    f"MD files at Zettelkasten root: {md_files_zk_root}",
-    f"non-MD files at Zettelkasten root: {non_md_files_zk_root}",
-    f"MD files at Attachments root: {md_files_attachment_root}",
-    f"Non-MD files at Attachments root: {non_md_files_attachment_root}",
-    f"MD files in Attachments: {md_files_in_attachment}",
-    f"Non-MD files in Attachments: {non_md_files_in_attachment}",
-    f"MD files in Zettelkasten: {md_files_in_zk}",
-    f"Non-MD files in Zettelkasten: {non_md_files_in_zk}",
-]
-
-
-def list_tags(conn) -> list[str]:
-    rs = conn.execute(
-        """
-    SELECT t.name
-    FROM tag AS t
-    ORDER BY t.name DESC;
-    """
-    ).fetchall()
-    res = []
-    for tag, *_ in rs:
-        res.append(tag)
-    return res
-
-
-def list_files_containing_tag(conn, tag: str):
-    return conn.execute(
-        """
-    SELECT f.path, f.name, f.extension
-    FROM file AS f
-    JOIN file_tag AS ft
-    ON f.id = ft.file_id
-    JOIN tag AS t
-    ON ft.tag_id = t.id
-    WHERE t.name = ?
-    ORDER BY t.name DESC;
-    """,
-        (tag,),
-    ).fetchall()
-
-
-# print("\n".join(rapport))
+        queries.file_tag.create(conn, file_id=_id, tag_id=tag_id)
