@@ -1,0 +1,5 @@
+include obsidian_cli/sql/file/file.sql
+include obsidian_cli/sql/file_tag/file_tag.sql
+include obsidian_cli/sql/link/link.sql
+include obsidian_cli/sql/note/note.sql
+include obsidian_cli/sql/tag/tag.sql

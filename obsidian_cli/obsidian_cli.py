@@ -127,9 +127,17 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
                 sys.stdout.write(f"{note!s}\n")
             return cli.success()
 
-        case ["find" | "f", "orphaned" | "o"]:
+        case ["find" | "f", "orphaned" | "o", dir]:
             # find orphaned files (files that are not linked)
-            ...
+            if not dir:
+                notes = repo.link.find_orphaned()
+            else:
+                notes = repo.link.find_orphaned_dir(dir)
+            if not notes:
+                return cli.failure("No orphaned files found")
+            for note in notes:
+                sys.stdout.write(f"{note!s}\n")
+            return cli.success()
 
         case _:
             return cli.failure(f"unrecognised command: {cmd}")

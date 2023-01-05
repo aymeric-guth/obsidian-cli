@@ -22,5 +22,23 @@ JOIN file AS p
 ON l.parent_id = p.id
 WHERE c.name = :name;
 
+-- name: find-orphaned
+SELECT f.id, f.path, f.name, f.extension
+FROM link AS l
+FULL JOIN file AS f
+ON l.child_id = f.id
+WHERE l.child_id IS NULL
+AND f.extension = '.md'
+AND f.path NOT LIKE '%Archives%';
+
+-- name: find-orphaned-dir
+SELECT f.id, f.path, f.name, f.extension
+FROM link AS l
+FULL JOIN file AS f
+ON l.child_id = f.id
+WHERE l.child_id IS NULL
+AND f.extension = '.md'
+AND f.path LIKE :dir;
+
 -- name: drop-table#
 DROP TABLE IF EXISTS link;

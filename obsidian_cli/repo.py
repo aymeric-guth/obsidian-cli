@@ -70,6 +70,15 @@ class LinkRepository(Base):
             NoteId(*note) for note in queries.link.find_file_by_link(self.conn, name)
         ]
 
+    def find_orphaned(self) -> list[NoteId]:
+        return [NoteId(*note) for note in queries.link.find_orphaned(self.conn)]
+
+    def find_orphaned_dir(self, dir: str) -> list[NoteId]:
+        return [
+            NoteId(*note)
+            for note in queries.link.find_orphaned_dir(self.conn, f"%{dir}%")
+        ]
+
 
 class FileTagRepository(Base):
     def find_tag_by_filename(self, name: str) -> list[str]:
