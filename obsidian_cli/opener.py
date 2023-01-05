@@ -1,3 +1,5 @@
+import os
+import os.path
 import sys
 import pathlib
 import os
@@ -5,11 +7,16 @@ import json
 import subprocess
 import urllib.parse
 import time
+import re
+import pathlib
+import yaml
+import ipdb
 
 from utils import cli, default_exc
+import lsfiles
 
 from ._types import Note
-from .core import note, tag, file_tag, tag, file, link
+from .core import note_repo, tag_repo, file_tag_repo, tag_repo, file_repo, link_repo
 
 
 URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
@@ -18,7 +25,6 @@ USER_HOME = os.getenv("HOME")
 if not USER_HOME:
     raise RuntimeError("can you kindly fuck off, sir")
 OBSIDIAN_DIR_DARWIN = f"{USER_HOME}/Library/Application Support/obsidian"
-# OBSIDIAN_DIR_LINUX = f"{USER_HOME}/.config/obsidian"
 OBSIDIAN_DIR_LINUX = f"{USER_HOME}/snap/obsidian/current/.config/obsidian"
 
 
@@ -151,6 +157,106 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
 # note -> tag
 
 
+def init_db():
+    wikilink = re.compile(r"(?:[\[]{2}([^\[]+)[\]]{2})")
+    mdlink = re.compile(r"(?:\[(.*)\])\((.*)\)")
+    modifiers = re.compile(r"[\#\|\^]{1,}")
+    pathlink = re.compile(r"/{1,}")
+    ignore_path = re.compile(r"(?:^.*imdone-tasks.*$)|(?:^\.)")
+    ignore_link = re.compile(r"(?:^400\sArchives.*$)|(?:^.*@Novall.*$)")
+    yaml_tag = re.compile(r"^[-]{3}([a-zA-Z0-9-_#:\s\n/]{1,})[-]{3}")
+    root = cli.env.get("OBSIDIAN_VAULT")
+    vault_prefix = len(str(root)) + 1
+
+    files = lsfiles.iterativeDFS(
+        filters=lsfiles.filters.dotfiles,
+        adapter=pathlib.PurePath,
+        root=root,  # type: ignore
+    )
+
+    # add all files to db
+    file_repo.create_many(
+        [
+            (
+                p if (p := str(f.parent)[vault_prefix:]) else ".",
+                f.name[: -(len(f.suffix))],
+                f.suffix,
+            )
+            for f in files
+            if not ignore_path.match(str(f.parent))
+        ],
+    )
+
+    dead_links = 0
+    # process all files
+    for note in note_repo.read_all():
+        # ignore files located at 400 Archives
+        if ignore_link.match(note.path):
+            continue
+        # ignore non markdown files
+        elif note.extension != ".md":
+            continue
+        # file loader
+        raw = (lambda f: open(f).read())(note.to_md())
+        # link parser
+        matches = wikilink.findall(raw)
+        links = [modifiers.split(m)[0] for m in matches]
+
+        # link -> file resolver
+        for l in links:
+            components = pathlib.Path(l)
+            lname = components.name
+            lpath = str(components.parent)
+
+            note_id = note_repo.find_by_name_path(name=lname, path=lpath)
+            if note_id is not None:
+                # unique file found with minimum info
+                link_repo.create_one(parent_id=note.id, child_id=note_id)
+                continue
+
+            rs = note_repo.find_by_name(name=lname)
+            if len(rs) == 1:
+                # unique file found with name and relative path
+                link_repo.create_one(parent_id=note.id, child_id=rs[0])
+
+            elif len(rs) == 0:
+                # file not found
+                # at this point all md are expected to be found
+                f, e = os.path.splitext(lname)
+                assert e != ".md", print(lname, lpath)
+
+                rs = file_repo.find_by_name_extension(name=f, extension=e)
+                if len(rs) == 1:
+                    # non md file found with minimum info
+                    link_repo.create_one(parent_id=note.id, child_id=rs[0])
+                    continue
+
+                rs = file_repo.find_by_name_extension_path(
+                    name=f, extension=e, path=lpath
+                )
+                if rs is not None:
+                    # non md file found with name and relative path
+                    link_repo.create_one(parent_id=note.id, child_id=rs)
+                else:
+                    # dead link
+                    dead_links += 1
+            else:
+                # multiple files found with name and relative path
+                raise RuntimeError(f"Unhandled case for: {note=} {lname=} {lpath=}")
+
+        # YAML tag parser
+        tags = (
+            lambda data: (
+                default_exc(yaml.load, {})(m.group(1), yaml.CLoader)  # type: ignore
+                if (m := yaml_tag.search(data))
+                else {}
+            )
+        )(raw)
+
+        for tag in tags.get("tags", []):
+            file_tag_repo.create_one(note.id, tag_repo.create_one(tag))
+
+
 def main(*args) -> tuple[str, int]:
     """
     main function
@@ -160,6 +266,7 @@ def main(*args) -> tuple[str, int]:
         print("check_env failed")
         return cli.failure(msg)
 
+    init_db()
     _env = os.environ.copy()
     if sys.platform == "darwin":
         cmd = [

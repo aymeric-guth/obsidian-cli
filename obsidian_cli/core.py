@@ -1,15 +1,10 @@
-import os
-import os.path
 import sqlite3
-import re
 import pathlib
-import yaml
+from typing import Optional, Any
 
 import aiosql
-import lsfiles
-import utils
 
-from ._types import Note
+from ._types import Note, Tag, NoteId
 
 
 class Base:
@@ -17,39 +12,63 @@ class Base:
         self.conn = conn
 
 
-class Note(Base):
-    def find_by_name(self, name: str) -> Note:
-        return queries.note.find_by_name(self.conn, name)
+class NoteRepository(Base):
+    def find_by_name(self, name: str) -> list[int]:
+        return [id for id, *_ in queries.note.find_by_name(self.conn, name)]
 
-    def read_all(self):
-        return queries.note.read_all(self.conn)
+    def read_all(self) -> list[NoteId]:
+        rs = queries.note.read_all(self.conn)
+        return [NoteId(*r) for r in rs]
 
-    def find_by_name_path(self, name: str, path: str) -> Note:
+    def find_by_name_path(self, name: str, path: str) -> Optional[int]:
         return queries.note.find_by_name_path(self.conn, name, path)
 
 
-class File(Base):
-    def find_by_name_extension(self, name: str, extension: str) -> list[Note]:
-        return queries.file.find_by_name_extension(self.conn, name, extension)
+class FileRepository(Base):
+    def find_by_name_extension(self, name: str, extension: str) -> list[int]:
+        return [
+            id
+            for id, *_ in queries.file.find_by_name_extension(
+                self.conn, name, extension
+            )
+        ]
 
-    def create_many(self, files: list[Note]) -> None:
+    def create_many(self, files: list[tuple[str, str, str]]) -> None:
         return queries.file.create_many(self.conn, files)
 
-    def find_by_name_extension_path(self, name: str, extension: str, path: str) -> Note:
+    def find_by_name_extension_path(
+        self, name: str, extension: str, path: str
+    ) -> Optional[int]:
         return queries.file.find_by_name_extension_path(
             self.conn, name, extension, path
         )
 
 
-class Tag(Base):
-    def find_by_name(self, tagname: str) -> list[tuple[int, str]]:
+class TagRepository(Base):
+    def find_by_name(self, tagname: str) -> list[Tag]:
         return queries.tag.find_by_name(self.conn, tagname)
 
-    def read_all(self):
+    def read_all(self) -> list[Tag]:
         return queries.tag.read_all(self.conn)
 
+    def create_one(self, name: str) -> int:
+        rs = self.conn.execute(
+            """
+            SELECT id FROM tag WHERE name = ?;
+                     """,
+            (name,),
+        ).fetchall()
+        if rs:
+            return rs[0][0]
+        return conn.execute(
+            """
+            INSERT INTO tag (name) VALUES (?) RETURNING id;
+            """,
+            (name,),
+        ).fetchall()[0][0]
 
-class Link(Base):
+
+class LinkRepository(Base):
     def create_one(self, parent_id, child_id):
         return queries.link.create_one(self.conn, parent_id, child_id)
 
@@ -57,7 +76,7 @@ class Link(Base):
         return queries.link.read_all(self.conn)
 
 
-class FileTag(Base):
+class FileTagRepository(Base):
     def find_tag_by_filename(self, name: str) -> list[str]:
         return [tag for tag, *_ in queries.file_tag.find_tag_by_filename(conn, name)]
 
@@ -82,8 +101,8 @@ queries.link.create_table(conn)
 queries.tag.create_table(conn)
 queries.file_tag.create_table(conn)
 
-file_tag = FileTag(conn)
-file = File(conn)
-note = Note(conn)
-tag = Tag(conn)
-link = Link(conn)
+file_tag_repo = FileTagRepository(conn)
+file_repo = FileRepository(conn)
+note_repo = NoteRepository(conn)
+tag_repo = TagRepository(conn)
+link_repo = LinkRepository(conn)

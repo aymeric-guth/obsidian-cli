@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS file_tag (
 	FOREIGN KEY(tag_id) REFERENCES tag(id)
 );
 
--- name: create
+-- name: create-one!
 INSERT INTO file_tag (file_id, tag_id) VALUES (:file_id, :tag_id);
 
 -- name: find-file-by-tag
