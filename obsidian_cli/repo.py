@@ -4,7 +4,7 @@ from typing import Optional, Any
 
 import aiosql
 
-from ._types import Note, Tag, NoteId
+from ._types import Tag, Note
 
 
 class Base:
@@ -13,12 +13,12 @@ class Base:
 
 
 class NoteRepository(Base):
-    def find_by_name(self, name: str) -> list[NoteId]:
-        return [NoteId(*note) for note in queries.note.find_by_name(self.conn, name)]
+    def find_by_name(self, name: str) -> list[Note]:
+        return [Note(*note) for note in queries.note.find_by_name(self.conn, name)]
 
-    def read_all(self) -> list[NoteId]:
+    def read_all(self) -> list[Note]:
         rs = queries.note.read_all(self.conn)
-        return [NoteId(*r) for r in rs]
+        return [Note(*r) for r in rs]
 
     def find_by_name_path(self, name: str, path: str) -> Optional[int]:
         return queries.note.find_by_name_path(self.conn, name, path)
@@ -65,17 +65,15 @@ class LinkRepository(Base):
     def read_all(self):
         return queries.link.read_all(self.conn)
 
-    def find_file_by_link(self, name: str) -> list[NoteId]:
-        return [
-            NoteId(*note) for note in queries.link.find_file_by_link(self.conn, name)
-        ]
+    def find_file_by_link(self, name: str) -> list[Note]:
+        return [Note(*note) for note in queries.link.find_file_by_link(self.conn, name)]
 
-    def find_orphaned(self) -> list[NoteId]:
-        return [NoteId(*note) for note in queries.link.find_orphaned(self.conn)]
+    def find_orphaned(self) -> list[Note]:
+        return [Note(*note) for note in queries.link.find_orphaned(self.conn)]
 
-    def find_orphaned_dir(self, dir: str) -> list[NoteId]:
+    def find_orphaned_dir(self, dir: str) -> list[Note]:
         return [
-            NoteId(*note)
+            Note(*note)
             for note in queries.link.find_orphaned_dir(self.conn, f"%{dir}%")
         ]
 
@@ -90,8 +88,8 @@ class FileTagRepository(Base):
     def create_many(self, tag_repo: list[tuple[int, int]]) -> None:
         return queries.file_tag.create_many(conn, tag_repo)
 
-    def find_file_by_tag(self, tag: str) -> list[NoteId]:
-        return [NoteId(*note) for note in queries.file_tag.find_file_by_tag(conn, tag)]
+    def find_file_by_tag(self, tag: str) -> list[Note]:
+        return [Note(*note) for note in queries.file_tag.find_file_by_tag(conn, tag)]
 
 
 def get_connection(path: str) -> sqlite3.Connection:

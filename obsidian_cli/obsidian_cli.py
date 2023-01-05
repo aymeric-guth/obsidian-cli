@@ -74,6 +74,16 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
         case ["open" | "o"]:
             return parse_args(["open", cli.env.get("STACK_FILE")])
 
+        case ["open" | "o", file] if file is not None and "/" in file:
+            import urllib.parse
+
+            uri = URI_OPEN.format(
+                vault_id=cli.env.get("VAULT_ID"), filename=urllib.parse.quote(file)
+            )
+
+            subprocess.run(["open", uri])
+            return cli.success()
+
         case ["open" | "o", file]:
             rs = repo.note.find_by_name(file)
             if not rs:
