@@ -11,7 +11,6 @@ python3 -m virtualenv .venv
 source .venv/bin/activate
 python -m pip install git+https://git.ars-virtualis.org/yul/obsidian-cli@master
 
-# hopefully a setup.py soon
 ```
 
 ### Environment Setup
@@ -30,12 +29,12 @@ default file that will be opened
 ## Usage
 
 ```shell
-# opens obsidian
-obs
+# open obsidian
+obsidian
 
 # opens default file if filename is not provided
 # else, tries to open filename
-obs open | o [filename]
+obsidian open | o [filename]
 
 # query, can be any of tag, nested tag
 # filename has to exist
@@ -58,3 +57,11 @@ https://www.slideshare.net/billkarwin/models-for-hierarchical-data
 #### AIOSQL
 
 https://nackjicholson.github.io/aiosql/defining-sql-queries.html#query-names
+
+
+### Commands
+
+```shell
+# opens all files containing tag language/go
+o find files language/go | xargs -I '{}' zsh -c '$WORKSPACE/.venv/bin/python -m $PROJECT_NAME open "{}"'
+```

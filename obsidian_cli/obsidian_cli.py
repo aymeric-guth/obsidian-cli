@@ -17,19 +17,33 @@ import lsfiles
 from . import repo
 
 
-URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
+# URI_OPEN = "obsidian://open?vault={vault_id}&file={filename}"
+URI_OPEN = "obsidian://advanced-uri?vault={vault_id}&filename={filename}&openmode=tab"
 URI_SEARCH = "obsidian://search?vault={vault_id}&query={query}"
 USER_HOME = os.getenv("HOME")
 if not USER_HOME:
     raise RuntimeError("can you kindly fuck off, sir")
 OBSIDIAN_DIR_DARWIN = f"{USER_HOME}/Library/Application Support/obsidian"
 OBSIDIAN_DIR_LINUX = f"{USER_HOME}/snap/obsidian/current/.config/obsidian"
+open_cmd = [
+    "open",
+]
+
+
+def wrapper(fnc):
+    def inner(*args, **kwargs):
+        repo.conn.commit()
+        repo.conn.close()
+        return fnc(*args, **kwargs)
+
+    return inner
 
 
 def check_env() -> tuple[str, int]:
     (msg, defined) = cli.env.query("OBSIDIAN_DIR")
     if sys.platform == "darwin" and not defined:
         cli.env.set("OBSIDIAN_DIR", OBSIDIAN_DIR_DARWIN)
+        open_cmd.append("--background")
     elif sys.platform == "linux" and not defined:
         cli.env.set("OBSIDIAN_DIR", OBSIDIAN_DIR_LINUX)
     else:
@@ -81,7 +95,7 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
                 vault_id=cli.env.get("VAULT_ID"), filename=urllib.parse.quote(file)
             )
 
-            subprocess.run(["open", uri])
+            subprocess.run([*open_cmd, uri])
             return cli.success()
 
         case ["open" | "o", file]:
@@ -92,7 +106,7 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
                 vault_id=cli.env.get("VAULT_ID"),
                 filename=rs[0].to_obsidian(),
             )
-            subprocess.run(["open", uri])
+            subprocess.run([*open_cmd, uri])
             return cli.success()
 
         case ["match" | "m", "file" | "f", name]:
@@ -107,13 +121,21 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
                 sys.stdout.write(tag + "\n")
             return cli.success()
 
-        case ["find" | "f", "file" | "f", tag]:
+        case ["list" | "l", "links" | "l", target]:
+            # resolve links in target file
+            raise NotImplementedError
+
+        case ["list", "dirs"]:
+            # list directory tree structure ~lsd --tree
+            raise NotImplementedError
+
+        case ["find" | "f", "files" | "f", tag]:
             # find file containing {tag}
             for note in repo.file_tag.find_file_by_tag(tag):
                 sys.stdout.write(f"{note!s}\n")
-            return cli.failure()
+            return cli.success()
 
-        case ["find" | "f", "tag" | "t", file]:
+        case ["find" | "f", "tags" | "t", file]:
             # find tags in {file}
             notes = repo.note.find_by_name(file)
             if not notes:
@@ -128,7 +150,7 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
                 sys.stdout.write(tag + "\n")
             return cli.success()
 
-        case ["find" | "f", "link" | "l", file]:
+        case ["find" | "f", "links" | "l", file]:
             # find file(s) containing link pattern -> list[Note]
             notes = repo.link.find_file_by_link(file)
             if not notes:
@@ -147,6 +169,10 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
                 return cli.failure("No orphaned files found")
             for note in notes:
                 sys.stdout.write(f"{note!s}\n")
+            return cli.success()
+
+        case ["init"]:
+            init_db()
             return cli.success()
 
         case _:
@@ -170,6 +196,7 @@ def init_db():
         root=root,  # type: ignore
     )
 
+    repo.init()
     # add all files to db
     repo.file.create_many(
         [
@@ -247,6 +274,8 @@ def init_db():
         )(raw)
 
         for tag in tags.get("tags", []):
+            if not tag:
+                continue
             repo.file_tag.create_one(note.id, repo.tag.create_one(tag))
 
 
@@ -259,22 +288,18 @@ def _main(*args) -> tuple[str, int]:
         print("check_env failed")
         return cli.failure(msg)
 
-    init_db()
+    # init_db()
     _env = os.environ.copy()
     if sys.platform == "darwin":
-        cmd = [
-            "open",
-            "obsidian://open?vault={vault_id}".format(vault_id=cli.env.get("VAULT_ID")),
-        ]
         process = "Obsidian"
     elif sys.platform == "linux":
-        cmd = [
-            "open",
-            "obsidian://open?vault={vault_id}".format(vault_id=cli.env.get("VAULT_ID")),
-        ]
         _env.update({"LD_PRELOAD": _env["TOOLDIR"] + "/lib/h4ckz/libwlhack.so"})
         process = "obsidian"
 
+    cmd = [
+        *open_cmd,
+        "obsidian://open?vault={vault_id}".format(vault_id=cli.env.get("VAULT_ID")),
+    ]
     res = subprocess.run(["pgrep", process], capture_output=True)
 
     if res.returncode == 0:
@@ -300,4 +325,7 @@ def _main(*args) -> tuple[str, int]:
 
 
 def main() -> int:
-    return cli.py_fnc(_main)(sys.argv[1:])
+    rv = cli.py_fnc(_main)(sys.argv[1:])
+    repo.conn.commit()
+    repo.conn.close()
+    return rv

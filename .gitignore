@@ -293,4 +293,4 @@ DataGripProjects/
 .tmuxp.yaml
 .func.sh
 a.out
-db.db
+db.sqlite

@@ -12,6 +12,19 @@ class Base:
         self.conn = conn
 
 
+class Init(Base):
+    def __call__(self):
+        queries.link.drop_table(self.conn)
+        queries.tag.drop_table(self.conn)
+        queries.file_tag.drop_table(self.conn)
+        queries.file.drop_table(self.conn)
+
+        queries.file.create_table(self.conn)
+        queries.link.create_table(self.conn)
+        queries.tag.create_table(self.conn)
+        queries.file_tag.create_table(self.conn)
+
+
 class NoteRepository(Base):
     def find_by_name(self, name: str) -> list[Note]:
         return [Note(*note) for note in queries.note.find_by_name(self.conn, name)]
@@ -92,30 +105,14 @@ class FileTagRepository(Base):
         return [Note(*note) for note in queries.file_tag.find_file_by_tag(conn, tag)]
 
 
-def get_connection(path: str) -> sqlite3.Connection:
-    conn = sqlite3.connect(path)
-    yield conn
-    conn.commit()
-    conn.close()
-    yield
-
-
 queries = aiosql.from_path(pathlib.Path(__file__).parent / "sql", "sqlite3")
-gen = get_connection(":memory:")
-conn = next(gen)
+conn = sqlite3.connect("/Users/yul/Desktop/dev/personal/obsidian-cli/db.sqlite")
+# conn = sqlite3.connect(":memory:")
 
-queries.link.drop_table(conn)
-queries.tag.drop_table(conn)
-queries.file_tag.drop_table(conn)
-queries.file.drop_table(conn)
-
-queries.file.create_table(conn)
-queries.link.create_table(conn)
-queries.tag.create_table(conn)
-queries.file_tag.create_table(conn)
 
 file_tag = FileTagRepository(conn)
 file = FileRepository(conn)
 note = NoteRepository(conn)
 tag = TagRepository(conn)
 link = LinkRepository(conn)
+init = Init(conn)
