@@ -30,15 +30,6 @@ open_cmd = [
 ]
 
 
-def wrapper(fnc):
-    def inner(*args, **kwargs):
-        repo.conn.commit()
-        repo.conn.close()
-        return fnc(*args, **kwargs)
-
-    return inner
-
-
 def check_env() -> tuple[str, int]:
     (msg, defined) = cli.env.query("OBSIDIAN_DIR")
     if sys.platform == "darwin" and not defined:
@@ -127,7 +118,10 @@ def parse_args(cmd: list[str]) -> tuple[str, int]:
 
         case ["list", "dirs"]:
             # list directory tree structure ~lsd --tree
-            raise NotImplementedError
+            for path in repo.file.read_all_path():
+                p = path.split("/")
+                print("    " * (len(p) - 1) + p[-1])
+            return cli.success()
 
         case ["find" | "f", "files" | "f", tag]:
             # find file containing {tag}

@@ -64,4 +64,7 @@ https://nackjicholson.github.io/aiosql/defining-sql-queries.html#query-names
 ```shell
 # opens all files containing tag language/go
 o find files language/go | xargs -I '{}' zsh -c '$WORKSPACE/.venv/bin/python -m $PROJECT_NAME open "{}"'
+
+# take 10 random entry from orphaned in /001 Zettelkasten
+shuf -n 10 <(o find orphaned 001\ Zettelkasten)
 ```

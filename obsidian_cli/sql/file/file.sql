@@ -16,5 +16,11 @@ SELECT id FROM file WHERE name = :name AND extension = :extension;
 -- name: find-by-name-extension-path$
 SELECT id FROM file WHERE name = :name AND extension = :extension AND path = :path;
 
+-- name: read-all-path
+select f.path
+from file as f
+group by f.path
+order by f.path ASC;
+
 -- name: drop-table#
 DROP TABLE IF EXISTS file;

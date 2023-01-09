@@ -1,6 +1,7 @@
 import sqlite3
 import pathlib
 from typing import Optional, Any
+import os
 
 import aiosql
 
@@ -26,6 +27,11 @@ class Init(Base):
 
 
 class NoteRepository(Base):
+    def find_by_id(self, id: int) -> Optional[Note]:
+        note = queries.note.find_by_id(self.conn, id=id)
+        if note is not None:
+            return Note(*note)
+
     def find_by_name(self, name: str) -> list[Note]:
         return [Note(*note) for note in queries.note.find_by_name(self.conn, name)]
 
@@ -55,6 +61,17 @@ class FileRepository(Base):
         return queries.file.find_by_name_extension_path(
             self.conn, name, extension, path
         )
+
+    def read_all_path(self) -> list[str]:
+        interpolated = set()
+        for path, *_ in queries.file.read_all_path(self.conn):
+            p = path.split("/")
+            for i in range(len(p)):
+                interpolated.add("/".join(p[: i + 1]))
+
+        res = list(interpolated)
+        res.sort()
+        return res
 
 
 class TagRepository(Base):
@@ -96,7 +113,13 @@ class FileTagRepository(Base):
         return [tag for tag, *_ in queries.file_tag.find_tag_by_filename(conn, name)]
 
     def create_one(self, file_id: int, tag_id: int) -> None:
-        return queries.file_tag.create_one(conn, file_id, tag_id)
+        try:
+            return queries.file_tag.create_one(conn, file_id, tag_id)
+        except sqlite3.IntegrityError as err:
+            ...
+            # suposed note using the same tag twice or more
+            # print(f"{tag_id=} note={NoteRepository(conn).find_by_id(file_id)}")
+            # raise
 
     def create_many(self, tag_repo: list[tuple[int, int]]) -> None:
         return queries.file_tag.create_many(conn, tag_repo)
@@ -106,7 +129,10 @@ class FileTagRepository(Base):
 
 
 queries = aiosql.from_path(pathlib.Path(__file__).parent / "sql", "sqlite3")
-conn = sqlite3.connect("/Users/yul/Desktop/dev/personal/obsidian-cli/db.sqlite")
+workspace = os.getenv("WORKSPACE")
+if not workspace:
+    raise RuntimeError("WORKSPACE is not defined")
+conn = sqlite3.connect(f"{workspace}/db.sqlite")
 # conn = sqlite3.connect(":memory:")
 
 
