@@ -1,6 +1,6 @@
 import sqlite3
 import pathlib
-from typing import Optional, Any
+from typing import Optional
 import os
 
 import aiosql
