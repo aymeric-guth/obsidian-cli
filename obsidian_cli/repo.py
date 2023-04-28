@@ -129,11 +129,11 @@ class FileTagRepository(Base):
 
 
 queries = aiosql.from_path(pathlib.Path(__file__).parent / "sql", "sqlite3")
-workspace = os.getenv("WORKSPACE")
-if not workspace:
-    raise RuntimeError("WORKSPACE is not defined")
-conn = sqlite3.connect(f"{workspace}/db.sqlite")
-# conn = sqlite3.connect(":memory:")
+# workspace = os.getenv("WORKSPACE")
+# if not workspace:
+#     raise RuntimeError("WORKSPACE is not defined")
+# conn = sqlite3.connect(f"{workspace}/db.sqlite")
+conn = sqlite3.connect(":memory:")
 
 
 file_tag = FileTagRepository(conn)

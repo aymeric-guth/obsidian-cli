@@ -178,8 +178,12 @@ def init_db():
     mdlink = re.compile(r"(?:\[(.*)\])\((.*)\)")
     modifiers = re.compile(r"[\#\|\^]{1,}")
     pathlink = re.compile(r"/{1,}")
-    ignore_path = re.compile(r"(?:^.*imdone-tasks.*$)|(?:^\.)")
-    ignore_link = re.compile(r"(?:^400\sArchives.*$)|(?:^.*@Novall.*$)")
+    ignore_path = re.compile(
+        r"(?:^.*imdone-tasks.*$)|(?:^\.)|(?:901\sDone)|(?:902\sDiscarded)"
+    )
+    ignore_link = re.compile(
+        r"(?:^400\sArchives.*$)|(?:^.*@Novall.*$)|(?:902\sDiscarded)"
+    )
     yaml_tag = re.compile(r"^[-]{3}([a-zA-Z0-9-_#:\s\n/]{1,})[-]{3}")
     root = cli.env.get("OBSIDIAN_VAULT")
     vault_prefix = len(str(root)) + 1
@@ -282,7 +286,7 @@ def _main(*args) -> tuple[str, int]:
         print("check_env failed")
         return cli.failure(msg)
 
-    # init_db()
+    init_db()
     _env = os.environ.copy()
     if sys.platform == "darwin":
         process = "Obsidian"

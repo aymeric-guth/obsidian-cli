@@ -67,4 +67,8 @@ o find files language/go | xargs -I '{}' zsh -c '$WORKSPACE/.venv/bin/python -m 
 
 # take 10 random entry from orphaned in /001 Zettelkasten
 shuf -n 10 <(o find orphaned 001\ Zettelkasten)
+
+shuf -n 10 <(o find orphaned 001\ Zettelkasten) | xargs -I '{}' zsh -c '$WORKSPACE/.venv/bin/python -m $PROJECT_NAME open "{}"'
 ```
+
+obsidian find files when/now | xargs -I '{}' zsh -c 'obsidian open "{}"'

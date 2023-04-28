@@ -1,0 +1,53 @@
+---
+config:
+  jk_path: $JK_LIBDIR
+
+pre-conditions:
+  env: &pre-conditions-env-global
+    - WORKSPACE
+    - PROJECT_NAME
+  validators:
+    global: &pre-conditions-validators-global
+      - '[ "$PWD" = "$WORKSPACE" ]'
+    python: &pre-conditions-validators-python
+      - '[ -x .venv/bin/python ]'
+      - '[ -z "$VIRTUAL_ENV" ]'
+
+executors:
+  shell: &shell
+    path: /bin/sh
+    options: -c
+    quote: true
+  python: &python
+    path: $WORKSPACE/.venv/bin/python
+
+tasks:
+  build:
+    cwd: ...
+    executor: *python
+    cmd: |
+      -m build . --wheel
+    pre-conditions:
+      env: *pre-conditions-env-global
+      validators: *pre-conditions-validators-global
+
+  run:
+    executor: *shell
+    cmd: echo run
+
+  config:
+    executor: *shell
+    cmd: echo config
+    pre-conditions:
+      env: *pre-conditions-env-global
+      validators: *pre-conditions-validators-global
+
+  clean:
+    executor: *shell
+    cmd: |
+      rm -rf dist && \
+      rm -rf build && \
+      rm -rf "${PROJECT_NAME}.egg-info"
+    pre-conditions:
+      env: *pre-conditions-env-global
+      validators: *pre-conditions-validators-global
