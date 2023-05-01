@@ -69,6 +69,42 @@ o find files language/go | xargs -I '{}' zsh -c '$WORKSPACE/.venv/bin/python -m 
 shuf -n 10 <(o find orphaned 001\ Zettelkasten)
 
 shuf -n 10 <(o find orphaned 001\ Zettelkasten) | xargs -I '{}' zsh -c '$WORKSPACE/.venv/bin/python -m $PROJECT_NAME open "{}"'
-```
 
 obsidian find files when/now | xargs -I '{}' zsh -c 'obsidian open "{}"'
+```
+
+
+```shell
+# opens `stack file`
+obsidian open|o
+
+# opens file in obsidian, either a relative path (relative to vault root) or a filename (opens first match if more than one)
+obsidian open|o {file}
+
+# returns relative path of files matching `filename`
+obsidian match|m file|f {filename}
+
+# list all tags
+obsidian list|l tags|t
+
+# resolve links in target file
+obsidian list|l links|l {target}
+
+# list directory tree structure ~lsd --tree
+obsidian list dirs
+
+# find files containing {tag}
+obsidian find|f files|f {tag}
+
+# list tags of {file}, requires unique identifier
+obsidian find|f tags|t {file}
+
+# find file(s) containing link pattern
+obsidian find|f links|l {file}
+
+# find orphaned files (files that are not linked)
+obsidian find|f orphaned|o {dir}
+
+# creates db cache
+obsidian init
+```
